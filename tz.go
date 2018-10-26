@@ -18,6 +18,7 @@ type TimezoneInterface interface {
 	CreateTimezones(dbFilename string, jsonFilename string) (error) 
 	LoadTimezones(filename string)						(error)
 	Query(q Coord)						(string, error)
+	Close()
 }
 	
 type TimezoneGeoJSON struct {
@@ -80,12 +81,12 @@ func main() {
 	//timeZones = Install("test.json") 
 	//store.InsertTimezones(timeZones)
 	PrintMemUsage() 
-	tz = &store
+	tz = &memory
 	//err := tz.CreateTimezones("timezone.db", "combined-with-oceans.json")
 	//if err != nil {
 	//	log.Println(err)
 	//}
-	tz.LoadTimezones("timezone.db")
+	tz.LoadTimezones("timezone")
 	PrintMemUsage() 
 
 	querys := []Coord{
@@ -93,34 +94,91 @@ func main() {
 			{Y: -15.678889,X: 34.973889,}, // Blantyre Airport
 			{X: -53.8825,Y: 28.0325,}, // Minsk Airport
 			{Y: -25.65945, X: 28.25674,}, //lat, long
-			{Y: -1.65945, X: 18.25674,}, //lat, long
+			{Y: -12.65945, X: 18.25674,}, //lat, long
+	    	{Y: 41.8976, X:-87.6205},
+		    {Y: 47.6897, X: -122.4023},
+		    {Y: 42.7235, X:-73.6931},
+		    {Y: 42.5807, X:-83.0223},
+		    {Y: 36.8381, X:-84.8500},
+		    {Y: 40.1674, X:-85.3583},
+		    {Y: 37.9643, X:-86.7453},
+		    {Y: 38.6043, X:-90.2417},
+		    {Y: 41.1591, X:-104.8261}, 
+		    {Y: 35.1991, X:-111.6348}, 
+		    {Y: 43.1432, X:-115.6750}, 
+		    {Y: 47.5886, X:-122.3382}, 
+		    {Y: 58.3168, X:-134.4397}, 
+		    {Y: 21.4381, X:-158.0493}, 
+		    {Y: 42.7000, X:-80.0000}, 
+		    {Y: 51.0036, X:-114.0161}, 
+		    {Y:-16.4965, X:-68.1702}, 
+		    {Y:-31.9369, X:115.8453}, 
+		    {Y: 42.0000, X:-87.5000}, 
+	    	{Y: 41.8976, X:-87.6205},
+		    {Y: 47.6897, X: -122.4023},
+		    {Y: 42.7235, X:-73.6931},
+		    {Y: 42.5807, X:-83.0223},
+		    {Y: 36.8381, X:-84.8500},
+		    {Y: 40.1674, X:-85.3583},
+		    {Y: 37.9643, X:-86.7453},
+		    {Y: 38.6043, X:-90.2417},
+		    {Y: 41.1591, X:-104.8261}, 
+		    {Y: 35.1991, X:-111.6348}, 
+		    {Y: 43.1432, X:-115.6750}, 
+		    {Y: 47.5886, X:-122.3382}, 
+		    {Y: 58.3168, X:-134.4397}, 
+		    {Y: 21.4381, X:-158.0493}, 
+		    {Y: 42.7000, X:-80.0000}, 
+		    {Y: 51.0036, X:-114.0161}, 
+		    {Y:-16.4965, X:-68.1702}, 
+		    {Y:-31.9369, X:115.8453}, 
+		    {Y: 42.0000, X:-87.5000}, 
+	    	{Y: 41.8976, X:-87.6205},
+		    {Y: 47.6897, X: -122.4023},
+		    {Y: 42.7235, X:-73.6931},
+		    {Y: 42.5807, X:-83.0223},
+		    {Y: 36.8381, X:-84.8500},
+		    {Y: 40.1674, X:-85.3583},
+		    {Y: 37.9643, X:-86.7453},
+		    {Y: 38.6043, X:-90.2417},
+		    {Y: 41.1591, X:-104.8261}, 
+		    {Y: 35.1991, X:-111.6348}, 
+		    {Y: 43.1432, X:-115.6750}, 
+		    {Y: 47.5886, X:-122.3382}, 
+		    {Y: 58.3168, X:-134.4397}, 
+		    {Y: 21.4381, X:-158.0493}, 
+		    {Y: 42.7000, X:-80.0000}, 
+		    {Y: 51.0036, X:-114.0161}, 
+		    {Y:-16.4965, X:-68.1702}, 
+		    {Y:-31.9369, X:115.8453}, 
+		    {Y: 42.0000, X:-87.5000}, 
 		}
 	
 	for _, query := range querys {
 		start := time.Now()
-		tz = &memory
 		res, err := tz.Query(query)
 		if err != nil {
 			log.Println(err)
 		}
 		elapsed := time.Since(start)
 		fmt.Println("Query Result: ", res, " took: ", elapsed)
-		PrintMemUsage() 
-		start2 := time.Now()
-		tz = &store
-		res2, err := tz.Query(query)
-		if err != nil {
-			log.Println(err)
-		}
-		elapsed2 := time.Since(start2)
-		fmt.Println("Query Result: ", res2, " took: ", elapsed2)
 	}
+
+	tz.Close()
+}
+
+func (m *Memory)Close() {
+	m.timezones = []Timezone{}
 	PrintMemUsage() 
-	defer store.db.Close()
+}
+
+func (s *Store)Close() {
+	defer s.db.Close()
+	PrintMemUsage() 
 }
 
 func (m *Memory)LoadTimezones(filename string) (error) {
-	file, err := os.Open(filename)
+	file, err := os.Open(filename + ".json")
 	if err != nil {
 		return err
 	}
@@ -139,7 +197,7 @@ func (m *Memory)LoadTimezones(filename string) (error) {
 }
 
 func (s *Store)LoadTimezones(filename string) (error) {
-	s.OpenDB(filename)
+	s.OpenDB(filename + ".db")
 	// Load indexes 
 	return s.db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys
@@ -163,7 +221,7 @@ func (m *Memory)Query(q Coord) (string, error) {
 	for _, tz := range m.timezones {
 		for _, p := range tz.Polygons {
 			if p.Min.X < q.X && p.Min.Y < q.Y && p.Max.X > q.X && p.Max.Y > q.Y {
-				if p.Contains(q) {
+				if p.contains(q) {
 					return tz.Tzid, nil
 				}
 			}
@@ -175,11 +233,11 @@ func (m *Memory)Query(q Coord) (string, error) {
 func (s *Store)Query(q Coord) (string, error) {
 	for _, i := range s.pIndex {
 		if i.Min.X < q.X && i.Min.Y < q.Y && i.Max.X > q.X && i.Max.Y > q.Y {
-			polygon, err := s.loadPolygon(i.Id)
+			p, err := s.loadPolygon(i.Id)
 			if err != nil {
 				return "Error", err
 			} 
-			if polygon.Contains(q) {
+			if p.contains(q) {
 				return i.Tzid, nil
 			}
 		}
