@@ -1,2 +1,4 @@
 *.snap
+*.db
+timezone.json
 combined-with-oceans.json
