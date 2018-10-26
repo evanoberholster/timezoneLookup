@@ -1,4 +1,4 @@
-*.snap
+*.snap.json
+*.snap.db
 *.db
-timezone.json
-combined-with-oceans.json
+*.json
