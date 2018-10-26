@@ -8,16 +8,13 @@ import (
 	"encoding/binary"
 	"runtime"
 	"encoding/json"
-
 	bolt "go.etcd.io/bbolt"
 )
 
 type TimezoneInterface interface {
-	//CreatePolygonIndex() 			[]PolygonIndex
-	//LoadPolygonIndex()  			[]PolygonIndex
 	CreateTimezones(dbFilename string, jsonFilename string) (error) 
-	LoadTimezones(filename string)						(error)
-	Query(q Coord)						(string, error)
+	LoadTimezones(filename string)							(error)
+	Query(q Coord)											(string, error)
 	Close()
 }
 	
@@ -61,10 +58,12 @@ type Coord struct {
 type Store struct { 	// Database struct
 	db 		*bolt.DB
 	pIndex 	[]PolygonIndex
+	snappy 	bool
 }
 
 type Memory struct { // Memory struct
 	timezones 	[]Timezone
+	snappy	bool
 }
 
 var store = Store{
@@ -382,7 +381,6 @@ func Install(filename string) []Timezone {
 	//log.Println(len)
 	elapsed_decode := time.Since(start_decode)
 	log.Printf("Timezone Decode took %s", elapsed_decode)
-
 	
 	return timeZones
 }
@@ -422,7 +420,7 @@ func (t *Timezone)decodePolygons(polys []interface{}) { //1
 		for _, point := range points.([]interface{}) { //3
 			p.updatePolygon(point.([]interface{})) 
 		}
-		t.addPolygon(p)
+		t.Polygons = append(t.Polygons, p)
 	}
 }
 
@@ -434,7 +432,7 @@ func (t *Timezone)decodeMultiPolygons(polys []interface{}) { //1
 				p.updatePolygon(point.([]interface{})) 
 			}
 		}
-		t.addPolygon(p)
+		t.Polygons = append(t.Polygons, p)
 	}
 }
 
@@ -457,10 +455,6 @@ func (p *Polygon)updatePolygon(xy []interface{}) {
 
 	// add Coords to Polygon
 	p.Coords = append(p.Coords, Coord{X:x, Y:y})
-}
-
-func (t *Timezone)addPolygon(p Polygon) {
-	t.Polygons = append(t.Polygons, p)
 }
 
 func (p *Polygon)contains(queryPt Coord) bool {
