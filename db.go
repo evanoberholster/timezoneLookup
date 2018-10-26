@@ -1,6 +1,5 @@
 package timezoneLookup
 import (
-	"log"
 	"errors"
 	"encoding/binary"
 	"encoding/json"
@@ -54,7 +53,7 @@ func (s *Store)LoadTimezones() (error) {
 			var index PolygonIndex
 			err := json.Unmarshal(v, &index)
 			if err != nil {
-				log.Println(err)
+				return err
 			}
 			index.Id = binary.BigEndian.Uint64(k)
 			s.pIndex = append(s.pIndex, index)
