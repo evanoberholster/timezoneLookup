@@ -8,8 +8,8 @@ import (
 var tz timezone.TimezoneInterface
 
 func main() {
-	//tz = timezone.BoltdbStorage(timezone.WithSnappy, "timezone")
-	tz = timezone.MemoryStorage(timezone.WithSnappy, "timezone")
+	tz = timezone.BoltdbStorage(timezone.WithSnappy, "timezone")
+	//tz = timezone.MemoryStorage(timezone.WithSnappy, "timezone")
 
 	err := tz.LoadTimezones()
 	if err != nil {
