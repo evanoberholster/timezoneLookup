@@ -24,15 +24,7 @@ type PolygonIndex struct {
 	Min 	    Coord 		`json:"min"`
 }
 
-const (
-	errNotExistGeoJSON = "Error: GeoJSON file does not exist"
-	errExistDatabase = "Error: Destination Database file already exists"
-	errNotExistDatabase = "Error: Database file does not exist"
-	errPolygonNotFound = "Error: Polygon for Timezone not found"
-	errTimezoneNotFound = "Error: Timezone not found"
-)
-
-func BoltdbStorage(snappy bool, filename string, encoding string) *Store {
+func BoltdbStorage(snappy bool, filename string, encoding string) TimezoneInterface {
 	if snappy {
 		filename = filename + ".snap.db"
 	} else {

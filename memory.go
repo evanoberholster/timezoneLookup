@@ -56,8 +56,7 @@ func (m *Memory)LoadTimezones() (error) {
 			}
 		}
 	}
-	
-	
+
 	m.timezones = tzs
 	return nil
 }
@@ -72,7 +71,7 @@ func (m *Memory)Query(q Coord) (string, error) {
 			}
 		}
 	}
-	return "Error", errors.New("Timezone not found")
+	return "Error", errors.New(errTimezoneNotFound)
 }
 
 func (m *Memory)writeTimezoneJSON(dbFilename string) (error) {

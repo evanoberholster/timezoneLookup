@@ -6,16 +6,12 @@ import (
 var tz timezone.TimezoneInterface
 
 func main() {
-	// BoltDB storage with Snappy Compression and MsgPack encoding
-	tz = timezone.BoltdbStorage(timezone.WithSnappy, "timezone", "msgpack")
-
-	// BoltDB storage with Snappy Compression and json encoding
-	//tz = timezone.BoltdbStorage(timezone.WithSnappy, "timezone", "json")
-
-	// Storage in JSON file with Snappy Compression loaded and queried from Memory
-	//tz = timezone.MemoryStorage(timezone.WithSnappy, "memory")
-
-	err := tz.LoadTimezones()
+	tz, err := timezone.LoadTimezones(timezone.Config{
+											DatabaseType:"boltdb", // memory or boltdb
+											DatabaseName:"timezone", // Name without suffix
+											Snappy: true,
+											Encoding: "msgpack", // json or msgpack
+										})
 	if err != nil {
 		fmt.Println(err)
 	}

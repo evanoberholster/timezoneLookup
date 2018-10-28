@@ -2,6 +2,7 @@ package timezoneLookup
 import (
 	"os"
 	"time"
+	"errors"
 	"fmt"
 	"runtime"
 	"encoding/json"
@@ -10,6 +11,14 @@ import (
 const (
 	WithSnappy = true
 	NoSnappy = false
+
+	// Errors
+	errNotExistGeoJSON = "Error: GeoJSON file does not exist"
+	errExistDatabase = "Error: Destination Database file already exists"
+	errNotExistDatabase = "Error: Database file does not exist"
+	errPolygonNotFound = "Error: Polygon for Timezone not found"
+	errTimezoneNotFound = "Error: Timezone not found"
+	errDatabaseTypeUknown = "Error: Database type unknown"
 )
 
 type TimezoneInterface interface {
@@ -45,11 +54,32 @@ type Polygon struct {
 }
 
 type Coord struct {
-	Lat 		float64 	`json:"lat"`
-	Lon 		float64		`json:"lon"`
+	Lat 		float32 	`json:"lat"`
+	Lon 		float32		`json:"lon"`
 } 
 
+type Config struct {
+	DatabaseName	string
+	DatabaseType	string
+	Snappy 			bool
+	Encoding		string
+}
+
 var Tz TimezoneInterface
+
+func LoadTimezones(config Config) (TimezoneInterface, error) {
+	if config.DatabaseType == "memory" {
+		tz := MemoryStorage(config.Snappy, config.DatabaseName)
+		err := tz.LoadTimezones()
+		return tz, err
+
+	} else if config.DatabaseType == "boltdb" {
+		tz := BoltdbStorage(config.Snappy, config.DatabaseName, config.Encoding)
+		err := tz.LoadTimezones()
+		return tz, err
+	}
+	return &Memory{}, errors.New(errDatabaseTypeUknown)
+}
 
 func TimezonesFromGeoJSON(filename string) ([]Timezone, error) {
 	start_decode := time.Now()
@@ -114,8 +144,8 @@ func (t *Timezone)newPolygon() (Polygon) {
 }
 
 func (p *Polygon)updatePolygon(xy []interface{}) {
-	lat := xy[0].(float64)
-	lon := xy[1].(float64)
+	lat := float32(xy[0].(float64))
+	lon := float32(xy[1].(float64))
 
 	// Update max and min limits
 	if p.Max.Lat < lat { p.Max.Lat = lat }
