@@ -2,7 +2,6 @@ package timezoneLookup
 import (
 	"os"
 	"time"
-	"log"
 	"fmt"
 	"runtime"
 	"encoding/json"
@@ -46,28 +45,15 @@ type Polygon struct {
 }
 
 type Coord struct {
-	X 		float64 		`json:"x"`
-	Y 		float64			`json:"y"`
+	Lat 		float64 	`json:"lat"`
+	Lon 		float64		`json:"lon"`
 } 
 
 var Tz TimezoneInterface
 
-func PrintMemUsage() {
-        var m runtime.MemStats
-        runtime.ReadMemStats(&m)
-        // For info on each, see: https://golang.org/pkg/runtime/#MemStats
-        fmt.Printf("Alloc = %v MiB", bToMb(m.Alloc))
-        fmt.Printf("\tTotalAlloc = %v MiB", bToMb(m.TotalAlloc))
-        fmt.Printf("\tSys = %v MiB", bToMb(m.Sys))
-        fmt.Printf("\tNumGC = %v\n", m.NumGC)
-}
-
-func bToMb(b uint64) uint64 {
-    return b / 1024 / 1024
-}
 func TimezonesFromGeoJSON(filename string) ([]Timezone, error) {
 	start_decode := time.Now()
-	fmt.Println("Loading Timezones from: ", filename)
+	fmt.Println("Building Timezone Database from: ", filename)
 	var timeZones []Timezone
 	file, err := os.Open(filename)
 	if err != nil {
@@ -93,9 +79,8 @@ func TimezonesFromGeoJSON(filename string) ([]Timezone, error) {
 			timeZones = append(timeZones, t)
 		}
 	}
-	fmt.Println("Timezones Loaded: ", len(timeZones))
 	elapsed_decode := time.Since(start_decode)
-	log.Println("Timezones decode took: ", elapsed_decode)
+	fmt.Println("GeoJSON decode took: ", elapsed_decode, " with ", len(timeZones), " Timezones loaded from GeoJSON")
 	return timeZones, nil
 }
 
@@ -123,23 +108,23 @@ func (t *Timezone)decodeMultiPolygons(polys []interface{}) { //1
 
 func (t *Timezone)newPolygon() (Polygon) {
 	return Polygon{
-			Max: Coord{ X: -180, Y: -180, },
-			Min: Coord{ X: 180, Y: 180, },
+			Max: Coord{ Lat: -180, Lon: -180, },
+			Min: Coord{ Lat: 180, Lon: 180, },
 		}
 }
 
 func (p *Polygon)updatePolygon(xy []interface{}) {
-	x := xy[0].(float64)
-	y := xy[1].(float64)
+	lat := xy[0].(float64)
+	lon := xy[1].(float64)
 
 	// Update max and min limits
-	if p.Max.X < x { p.Max.X = x }
-	if p.Max.Y < y { p.Max.Y = y }
-	if p.Min.X > x { p.Min.X = x }
-	if p.Min.Y > y { p.Min.Y = y }
+	if p.Max.Lat < lat { p.Max.Lat = lat }
+	if p.Max.Lon < lon { p.Max.Lon = lon }
+	if p.Min.Lat > lat { p.Min.Lat = lat }
+	if p.Min.Lon > lon { p.Min.Lon = lon }
 
 	// add Coords to Polygon
-	p.Coords = append(p.Coords, Coord{X:x, Y:y})
+	p.Coords = append(p.Coords, Coord{Lat:lat, Lon:lon})
 }
 
 func (p *Polygon)contains(queryPt Coord) bool {
@@ -155,11 +140,22 @@ func (p *Polygon)contains(queryPt Coord) bool {
     return in
 }
 
+
 func rayIntersectsSegment(p, a, b Coord) bool {
-    return (a.Y > p.Y) != (b.Y > p.Y) &&
-        p.X < (b.X-a.X)*(p.Y-a.Y)/(b.Y-a.Y)+a.X
+    return (a.Lon > p.Lon) != (b.Lon > p.Lon) &&
+        p.Lat < (b.Lat-a.Lat)*(p.Lon-a.Lon)/(b.Lon-a.Lon)+a.Lat
 }
 
+func PrintMemUsage() {
+        var m runtime.MemStats
+        runtime.ReadMemStats(&m)
+        // For info on each, see: https://golang.org/pkg/runtime/#MemStats
+        fmt.Printf("Allocated Memory = %v MiB", bToMb(m.Alloc))
+        fmt.Printf("\tTotal Allocated Memory = %v MiB", bToMb(m.TotalAlloc))
+        fmt.Printf("\tSystem Memory = %v MiB", bToMb(m.Sys))
+        fmt.Printf("\tNumber of GC = %v\n", m.NumGC)
+}
 
-
-
+func bToMb(b uint64) uint64 {
+    return b / 1024 / 1024
+}

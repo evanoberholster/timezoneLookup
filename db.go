@@ -1,10 +1,12 @@
 package timezoneLookup
 import (
+	"os"
 	"errors"
 	"encoding/binary"
 	"encoding/json"
 	bolt "go.etcd.io/bbolt"
 	"github.com/golang/snappy"
+	"github.com/vmihailenco/msgpack"
 )
 
 type Store struct { 	// Database struct
@@ -12,6 +14,7 @@ type Store struct { 	// Database struct
 	pIndex 		[]PolygonIndex
 	filename 	string
 	snappy 		bool
+	encoding	string
 }
 
 type PolygonIndex struct {
@@ -21,7 +24,15 @@ type PolygonIndex struct {
 	Min 	    Coord 		`json:"min"`
 }
 
-func BoltdbStorage(snappy bool, filename string) *Store {
+const (
+	errNotExistGeoJSON = "Error: GeoJSON file does not exist"
+	errExistDatabase = "Error: Destination Database file already exists"
+	errNotExistDatabase = "Error: Database file does not exist"
+	errPolygonNotFound = "Error: Polygon for Timezone not found"
+	errTimezoneNotFound = "Error: Timezone not found"
+)
+
+func BoltdbStorage(snappy bool, filename string, encoding string) *Store {
 	if snappy {
 		filename = filename + ".snap.db"
 	} else {
@@ -31,27 +42,35 @@ func BoltdbStorage(snappy bool, filename string) *Store {
 		filename: filename,
 		pIndex: []PolygonIndex{},
 		snappy: snappy,
+		encoding: encoding,
 	}
 }
 
 func (s *Store)Close() {
 	defer s.db.Close()
-	PrintMemUsage() 
 }
 
 func (s *Store)LoadTimezones() (error) {
+	if _, err := os.Stat(s.filename); os.IsNotExist(err) {
+		return errors.New(errNotExistDatabase)
+	}
 	err := s.OpenDB(s.filename)
 	if err != nil {
 		return err
 	}
-	// Load indexes 
+	// Load polygon indexes 
 	return s.db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys
 		b := tx.Bucket([]byte("Index"))
 		
+		var err error
 		b.ForEach(func(k, v []byte) error {
 			var index PolygonIndex
-			err := json.Unmarshal(v, &index)
+			if s.encoding == "msgpack" {
+				err = msgpack.Unmarshal(v, &index)
+			} else {
+				err = json.Unmarshal(v, &index)
+			}
 			if err != nil {
 				return err
 			}
@@ -65,20 +84,24 @@ func (s *Store)LoadTimezones() (error) {
 
 func (s *Store)Query(q Coord) (string, error) {
 	for _, i := range s.pIndex {
-		if i.Min.X < q.X && i.Min.Y < q.Y && i.Max.X > q.X && i.Max.Y > q.Y {
+		if i.Min.Lat < q.Lat && i.Min.Lon < q.Lon && i.Max.Lat > q.Lat && i.Max.Lon > q.Lon {
 			p, err := s.loadPolygon(i.Id)
 			if err != nil {
-				return "Error", err
+				return i.Tzid, errors.New(errPolygonNotFound)
 			} 
 			if p.contains(q) {
 				return i.Tzid, nil
 			}
 		}
 	}
-	return "Error", errors.New("Timezone not found")
+	return "Error", errors.New(errTimezoneNotFound)
 }
 
 func (s *Store)CreateTimezones(jsonFilename string) (error)  {
+	err := checkFilesExist(jsonFilename, s.filename)
+	if err != nil {
+		return err
+	}
 	tzs, err := TimezonesFromGeoJSON(jsonFilename)
 	if err != nil {
 		return err
@@ -93,6 +116,16 @@ func (s *Store)CreateTimezones(jsonFilename string) (error)  {
 	}
 	for _, tz := range tzs {
 		s.InsertPolygons(tz)
+	}
+	return nil
+}
+
+func checkFilesExist(src string, dest string) (error) {
+	if _, err := os.Stat(src); os.IsNotExist(err) {
+		return errors.New(errNotExistGeoJSON)
+	}
+	if _, err := os.Stat(dest); !os.IsNotExist(err) {
+		return errors.New(errExistDatabase)
 	}
 	return nil
 }
@@ -127,17 +160,30 @@ func (s *Store)InsertPolygons(tz Timezone) {
 				Max: polygon.Max,
 				Min: polygon.Min,
         	}
-
-        	// UnMarshal Polygon Index
-        	bufPolygon, err := json.Marshal(polygon)
-		    if err != nil {
-		        return err
-		    }
-		    // UnMarshal Polygon
-        	bufIndex, err := json.Marshal(index)
-		    if err != nil {
-		        return err
-		    }
+        	var bufPolygon, bufIndex []byte
+        	var err error
+        	
+        	if s.encoding == "msgpack" {
+        		// Marshal Polygons
+				bufPolygon, err = msgpack.Marshal(polygon)
+			    if err != nil {
+			        return err
+			    }
+			    // Marshal Polygon Index
+            	bufIndex, err = msgpack.Marshal(index)
+			    if err != nil {
+			        return err
+			    }
+			} else {
+	        	bufPolygon, err = json.Marshal(polygon)
+			    if err != nil {
+			        return err
+			    }	
+			    bufIndex, err = json.Marshal(index)
+			    if err != nil {
+			        return err
+			    }
+			}
 		    if s.snappy {
 		    	bufPolygon = snappy.Encode(nil, bufPolygon)
 		    }
@@ -163,7 +209,11 @@ func (s *Store)loadPolygon(id uint64) (Polygon, error) {
 				return err
 			}
 		}
-		return json.Unmarshal(v, &polygon)
+		if s.encoding == "msgpack" {
+			return msgpack.Unmarshal(v, &polygon)
+		} else {
+			return json.Unmarshal(v, &polygon)
+		}
 	})
 	return polygon, err
 }

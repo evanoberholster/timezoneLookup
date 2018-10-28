@@ -27,7 +27,6 @@ func MemoryStorage(snappy bool, filename string) *Memory {
 
 func (m *Memory)Close() {
 	m.timezones = []Timezone{}
-	PrintMemUsage() 
 }
 
 func (m *Memory)LoadTimezones() (error) {
@@ -66,7 +65,7 @@ func (m *Memory)LoadTimezones() (error) {
 func (m *Memory)Query(q Coord) (string, error) {
 	for _, tz := range m.timezones {
 		for _, p := range tz.Polygons {
-			if p.Min.X < q.X && p.Min.Y < q.Y && p.Max.X > q.X && p.Max.Y > q.Y {
+			if p.Min.Lat < q.Lat && p.Min.Lon < q.Lon && p.Max.Lat > q.Lat && p.Max.Lon > q.Lon {
 				if p.contains(q) {
 					return tz.Tzid, nil
 				}

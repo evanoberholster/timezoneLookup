@@ -10,6 +10,7 @@ var (
 	jsonFilename = flag.String("json", "combined-with-oceans.json", "GEOJSON Filename")
 	dbFilename = flag.String("db", "timezone", "Destination database filename")
 	storageType = flag.String("type", "boltdb", "Storage: boltdb or memory")
+	encoding = flag.String("encoding", "msgpack", "BoltDB encoding type: json or msgpack")
 )
 
 func main() {
@@ -22,7 +23,7 @@ func main() {
 		if *storageType == "memory" {
 			tz = timezone.MemoryStorage(*snappy, *dbFilename)
 		} else if *storageType == "boltdb" {
-			tz = timezone.BoltdbStorage(*snappy, *dbFilename)
+			tz = timezone.BoltdbStorage(*snappy, *dbFilename, *encoding)
 		} else {
 			log.Println("\"-db\" No database type specified")
 			return
