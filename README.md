@@ -13,18 +13,26 @@ Data should be obtained via GeoJSON, I recommend: https://github.com/evansiroky/
 
 ### Performance BoltDB
 With Snappy Compression and data loaded from Boltdb
+
 (Msgpack) Average time per query:  ~18.015757ms 
+
 (Msgpack) Database file size: 89M
+
 (Json) Average time per query:  ~38.356527ms
+
 (Json) Database file size: 70M
+
 ```
 Alloc = 4 MiB	TotalAlloc = 232 MiB	Sys = 68 MiB	NumGC = 88
 ```
 
 ### Performance Memory
 With Snappy Compression and data loaded from memory
+
 Average time per query:  ~87.982µs
+
 Database file size: 65M 
+
 ```
 Alloc = 550 MiB	TotalAlloc = 995 MiB	Sys = 601 MiB	NumGC = 10
 ```
