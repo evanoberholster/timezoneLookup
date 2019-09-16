@@ -17,7 +17,7 @@ func main() {
 	}
 
 	res, err := tz.Query(timezone.Coord{
-			Lon: 5.261417, Lat: -3.925778,})
+			Lat: 5.261417, Lon: -3.925778,})
 	if err != nil {
 		fmt.Println(err)
 	}

@@ -138,14 +138,14 @@ func (t *Timezone)decodeMultiPolygons(polys []interface{}) { //1
 
 func (t *Timezone)newPolygon() (Polygon) {
 	return Polygon{
-			Max: Coord{ Lat: -180, Lon: -180, },
-			Min: Coord{ Lat: 180, Lon: 180, },
+			Max: Coord{ Lat: -90, Lon: -180, },
+			Min: Coord{ Lat: 90, Lon: 180, },
 		}
 }
 
 func (p *Polygon)updatePolygon(xy []interface{}) {
-	lat := float32(xy[0].(float64))
-	lon := float32(xy[1].(float64))
+	lon := float32(xy[0].(float64))
+	lat := float32(xy[1].(float64))
 
 	// Update max and min limits
 	if p.Max.Lat < lat { p.Max.Lat = lat }
