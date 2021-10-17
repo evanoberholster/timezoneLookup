@@ -1,15 +1,16 @@
-package timezoneLookup 
+package timezoneLookup
+
 import (
-	"os"
 	"encoding/json"
 	"errors"
 	"github.com/golang/snappy"
+	"os"
 )
 
 type Memory struct { // Memory struct
-	filename 	string
-	timezones 	[]Timezone
-	snappy		bool
+	filename  string
+	timezones []Timezone
+	snappy    bool
 }
 
 func MemoryStorage(snappy bool, filename string) *Memory {
@@ -19,22 +20,22 @@ func MemoryStorage(snappy bool, filename string) *Memory {
 		filename = filename + ".json"
 	}
 	return &Memory{
-		filename: filename,
+		filename:  filename,
 		timezones: []Timezone{},
-		snappy: snappy,
+		snappy:    snappy,
 	}
 }
 
-func (m *Memory)Close() {
+func (m *Memory) Close() {
 	m.timezones = []Timezone{}
 }
 
-func (m *Memory)LoadTimezones() (error) {
+func (m *Memory) LoadTimezones() error {
 	file, err := os.Open(m.filename)
 	if err != nil {
 		return err
 	}
-	
+
 	var tzs []Timezone
 	if m.snappy {
 		data := snappy.NewReader(file)
@@ -61,7 +62,7 @@ func (m *Memory)LoadTimezones() (error) {
 	return nil
 }
 
-func (m *Memory)Query(q Coord) (string, error) {
+func (m *Memory) Query(q Coord) (string, error) {
 	for _, tz := range m.timezones {
 		for _, p := range tz.Polygons {
 			if p.Min.Lat < q.Lat && p.Min.Lon < q.Lon && p.Max.Lat > q.Lat && p.Max.Lon > q.Lon {
@@ -74,30 +75,30 @@ func (m *Memory)Query(q Coord) (string, error) {
 	return "Error", errors.New(errTimezoneNotFound)
 }
 
-func (m *Memory)writeTimezoneJSON(dbFilename string) (error) {
-    data, err := json.Marshal(m.timezones)
-    if err != nil {
-    	return err
-    }
+func (m *Memory) writeTimezoneJSON(dbFilename string) error {
+	data, err := json.Marshal(m.timezones)
+	if err != nil {
+		return err
+	}
 	w, err := os.Create(dbFilename)
-    if err != nil {
-    	return err
-    }
-    defer w.Close()
-    if m.snappy {
-    	snap := snappy.NewBufferedWriter(w)
+	if err != nil {
+		return err
+	}
+	defer w.Close()
+	if m.snappy {
+		snap := snappy.NewBufferedWriter(w)
 		_, err := snap.Write(data)
 		if err != nil {
 			return err
 		}
 		defer snap.Close()
-    } else {
-    	 _ , err = w.Write(data)
-    }
-    return err
+	} else {
+		_, err = w.Write(data)
+	}
+	return err
 }
 
-func (m *Memory)CreateTimezones(jsonFilename string) (error)  {
+func (m *Memory) CreateTimezones(jsonFilename string) error {
 	tzs, err := TimezonesFromGeoJSON(jsonFilename)
 	if err != nil {
 		return err
