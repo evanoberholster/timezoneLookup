@@ -214,27 +214,31 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 	var E func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error)
 	switch s.encoding {
 	case EncMsgPack:
-		eP := msgpack.NewEncoder(bytes.NewBuffer(bufPolygon))
-		eI := msgpack.NewEncoder(bytes.NewBuffer(bufIndex))
+		pBuf, iBuf := bytes.NewBuffer(bufPolygon), bytes.NewBuffer(bufIndex)
+		eP := msgpack.NewEncoder(pBuf)
+		eI := msgpack.NewEncoder(iBuf)
 		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
-			bufPolygon, bufIndex = bufPolygon[:0], bufIndex[:0]
+			pBuf.Reset()
 			if err := eP.Encode(polygon); err != nil {
 				return nil, nil, err
 			}
 			// Marshal Polygon Index
+			iBuf.Reset()
 			err := eI.Encode(index)
-			return bufPolygon, bufIndex, err
+			return pBuf.Bytes(), iBuf.Bytes(), err
 		}
 	case EncJSON:
-		eP := json.NewEncoder(bytes.NewBuffer(bufPolygon))
-		eI := json.NewEncoder(bytes.NewBuffer(bufIndex))
+		pBuf, iBuf := bytes.NewBuffer(bufPolygon), bytes.NewBuffer(bufIndex)
+		eP := json.NewEncoder(pBuf)
+		eI := json.NewEncoder(iBuf)
 		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
-			bufPolygon, bufIndex = bufPolygon[:0], bufIndex[:0]
+			pBuf.Reset()
 			if err := eP.Encode(polygon); err != nil {
 				return nil, nil, err
 			}
+			iBuf.Reset()
 			err := eI.Encode(index)
-			return bufPolygon, bufIndex, err
+			return pBuf.Bytes(), iBuf.Bytes(), err
 		}
 	case EncProtobuf:
 		var pbPoly pb.Polygon
