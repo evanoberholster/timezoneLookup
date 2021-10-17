@@ -8,32 +8,45 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"testing"
 
 	timezone "github.com/evanoberholster/timezoneLookup"
 )
 
 func BenchmarkLookup(b *testing.B) {
-	for _, e := range []string{"msgpack", "protobuf"} {
-		e := e
-		b.Run(e, func(b *testing.B) {
-			if _, err := os.Stat("timezone." + e + ".snap.db"); err != nil && os.IsNotExist(err) {
-				cmd := exec.Command("go", "run", "cmd/timezone.go", "-encoding="+e)
+	_ = os.MkdirAll("testdata", 0755)
+	tzgo := filepath.Join("..", "cmd", "timezone.go")
+	for _, e := range []string{"msgpack", "protobuf", "json"} {
+		cfg := timezone.Config{
+			DatabaseName: filepath.Join("testdata", "timezone"),
+			Snappy:       true,
+		}
+		if e == "json" {
+			if _, err := os.Stat(cfg.DatabaseName + ".snap.json"); err != nil && os.IsNotExist(err) {
+				cmd := exec.Command("go", "run", tzgo, "-type=memory")
 				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+				cmd.Dir = "testdata"
 				_ = cmd.Run()
 			}
-			enc, err := timezone.EncodingFromString(e)
-			if err != nil {
+			cfg.DatabaseType = "memory"
+		} else {
+			if _, err := os.Stat(cfg.DatabaseName + "." + e + ".snap.db"); err != nil && os.IsNotExist(err) {
+				cmd := exec.Command("go", "run", tzgo, "-encoding="+e)
+				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+				cmd.Dir = "testdata"
+				_ = cmd.Run()
+			}
+			var err error
+			if cfg.Encoding, err = timezone.EncodingFromString(e); err != nil {
 				b.Fatal(err)
 			}
-			tz, err := timezone.LoadTimezones(timezone.Config{
-				DatabaseType: "boltdb",   // memory or boltdb
-				DatabaseName: "timezone", // Name without suffix
-				Snappy:       true,
-				Encoding:     enc, // json or msgpack
-			})
+			cfg.DatabaseType = "boltdb"
+		}
+		b.Run(e, func(b *testing.B) {
+			tz, err := timezone.LoadTimezones(cfg)
 			if err != nil {
-				b.Fatal(err)
+				b.Fatalf("%q: %#v: %+v", e, cfg, err)
 			}
 			defer tz.Close()
 
