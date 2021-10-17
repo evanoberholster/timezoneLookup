@@ -11,6 +11,7 @@ import (
 	"os"
 
 	"github.com/golang/snappy"
+	//"github.com/klauspost/compress/snappy"
 	"github.com/vmihailenco/msgpack"
 	bolt "go.etcd.io/bbolt"
 )

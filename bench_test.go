@@ -86,15 +86,14 @@ func BenchmarkLookup(b *testing.B) {
 		{Lat: 42.0000, Lon: -87.5000},
 	}
 
+	b.ReportAllocs()
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		for _, query := range querys {
-			_, err := tz.Query(query)
-			if err != nil {
-				fmt.Println(err)
-			}
+		query := querys[i%len(querys)]
+		_, err := tz.Query(query)
+		if err != nil {
+			fmt.Println(err)
 		}
 	}
 	b.StopTimer()
-	timezone.PrintMemUsage()
 }
