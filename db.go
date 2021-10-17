@@ -5,6 +5,7 @@
 package timezoneLookup
 
 import (
+	"bytes"
 	"encoding/binary"
 	"encoding/json"
 	"errors"
@@ -108,13 +109,7 @@ func (s *Store) LoadTimezones() error {
 		return err
 	}
 	var pbIndex pb.PolygonIndex
-	U := func(index *PolygonIndex, v []byte) error {
-		if err := proto.Unmarshal(v, &pbIndex); err != nil {
-			return err
-		}
-		index.FromPB(&pbIndex)
-		return nil
-	}
+	var U func(index *PolygonIndex, v []byte) error
 	switch s.encoding {
 	case EncMsgPack:
 		U = func(index *PolygonIndex, v []byte) error {
@@ -123,6 +118,14 @@ func (s *Store) LoadTimezones() error {
 	case EncJSON:
 		U = func(index *PolygonIndex, v []byte) error {
 			return json.Unmarshal(v, index)
+		}
+	case EncProtobuf:
+		U = func(index *PolygonIndex, v []byte) error {
+			if err := proto.Unmarshal(v, &pbIndex); err != nil {
+				return err
+			}
+			index.FromPB(&pbIndex)
+			return nil
 		}
 	}
 	// Load polygon indexes
@@ -207,36 +210,44 @@ func (s *Store) createBuckets() error {
 }
 
 func (s *Store) InsertPolygons(tz Timezone) error {
-	var pbPoly pb.Polygon
-	var pbIndex pb.PolygonIndex
-	E := func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
-		polygon.ToPB(&pbPoly)
-		bufPolygon, err := proto.Marshal(&pbPoly)
-		if err != nil {
-			return nil, nil, err
-		}
-		index.ToPB(&pbIndex)
-		bufIndex, err := proto.Marshal(&pbIndex)
-		return bufPolygon, bufIndex, err
-	}
+	var bufPolygon, bufIndex []byte
+	var E func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error)
 	switch s.encoding {
 	case EncMsgPack:
+		eP := msgpack.NewEncoder(bytes.NewBuffer(bufPolygon))
+		eI := msgpack.NewEncoder(bytes.NewBuffer(bufIndex))
 		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
-			bufPolygon, err := msgpack.Marshal(polygon)
-			if err != nil {
+			bufPolygon, bufIndex = bufPolygon[:0], bufIndex[:0]
+			if err := eP.Encode(polygon); err != nil {
 				return nil, nil, err
 			}
 			// Marshal Polygon Index
-			bufIndex, err := msgpack.Marshal(index)
+			err := eI.Encode(index)
 			return bufPolygon, bufIndex, err
 		}
 	case EncJSON:
+		eP := json.NewEncoder(bytes.NewBuffer(bufPolygon))
+		eI := json.NewEncoder(bytes.NewBuffer(bufIndex))
 		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
-			bufPolygon, err := json.Marshal(polygon)
+			bufPolygon, bufIndex = bufPolygon[:0], bufIndex[:0]
+			if err := eP.Encode(polygon); err != nil {
+				return nil, nil, err
+			}
+			err := eI.Encode(index)
+			return bufPolygon, bufIndex, err
+		}
+	case EncProtobuf:
+		var pbPoly pb.Polygon
+		var pbIndex pb.PolygonIndex
+		var mo proto.MarshalOptions
+		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
+			polygon.ToPB(&pbPoly)
+			bufPolygon, err := mo.MarshalAppend(bufPolygon[:0], &pbPoly)
 			if err != nil {
 				return nil, nil, err
 			}
-			bufIndex, err := json.Marshal(index)
+			index.ToPB(&pbIndex)
+			bufIndex, err := mo.MarshalAppend(bufIndex[:0], &pbIndex)
 			return bufPolygon, bufIndex, err
 		}
 	}
@@ -277,13 +288,7 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 
 func (s *Store) loadPolygon(id uint64) (Polygon, error) {
 	var pbPoly pb.Polygon
-	U := func(polygon *Polygon, v []byte) error {
-		if err := proto.Unmarshal(v, &pbPoly); err != nil {
-			return err
-		}
-		polygon.FromPB(&pbPoly)
-		return nil
-	}
+	var U func(polygon *Polygon, v []byte) error
 	switch s.encoding {
 	case EncMsgPack:
 		U = func(polygon *Polygon, v []byte) error {
@@ -292,6 +297,14 @@ func (s *Store) loadPolygon(id uint64) (Polygon, error) {
 	case EncJSON:
 		U = func(polygon *Polygon, v []byte) error {
 			return json.Unmarshal(v, polygon)
+		}
+	case EncProtobuf:
+		U = func(polygon *Polygon, v []byte) error {
+			if err := proto.Unmarshal(v, &pbPoly); err != nil {
+				return err
+			}
+			polygon.FromPB(&pbPoly)
+			return nil
 		}
 	}
 	var polygon Polygon
