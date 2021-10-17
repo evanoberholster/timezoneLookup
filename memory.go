@@ -5,11 +5,12 @@
 package timezoneLookup
 
 import (
-	"encoding/json"
 	"errors"
+	"io"
 	"os"
 
-	"github.com/golang/snappy"
+	json "github.com/goccy/go-json"
+	"github.com/klauspost/compress/snappy"
 )
 
 type Memory struct { // Memory struct
@@ -20,10 +21,9 @@ type Memory struct { // Memory struct
 
 func MemoryStorage(snappy bool, filename string) *Memory {
 	if snappy {
-		filename = filename + ".snap.json"
-	} else {
-		filename = filename + ".json"
+		filename += ".snap"
 	}
+	filename += ".json"
 	return &Memory{
 		filename:  filename,
 		timezones: []Timezone{},
@@ -46,7 +46,6 @@ func (m *Memory) LoadTimezones() error {
 		data := snappy.NewReader(file)
 		dec := json.NewDecoder(data)
 		for dec.More() {
-
 			err := dec.Decode(&tzs)
 			if err != nil {
 				return err
@@ -81,24 +80,23 @@ func (m *Memory) Query(q Coord) (string, error) {
 }
 
 func (m *Memory) writeTimezoneJSON(dbFilename string) error {
-	data, err := json.Marshal(m.timezones)
-	if err != nil {
-		return err
-	}
 	w, err := os.Create(dbFilename)
 	if err != nil {
 		return err
 	}
 	defer w.Close()
+	sw := io.WriteCloser(w)
 	if m.snappy {
-		snap := snappy.NewBufferedWriter(w)
-		_, err := snap.Write(data)
-		if err != nil {
-			return err
+		sw = snappy.NewBufferedWriter(w)
+	}
+	err = json.NewEncoder(sw).Encode(m.timezones)
+	if closeErr := sw.Close(); closeErr != nil && err == nil {
+		err = closeErr
+	}
+	if m.snappy {
+		if closeErr := w.Close(); closeErr != nil && err == nil {
+			err = closeErr
 		}
-		defer snap.Close()
-	} else {
-		_, err = w.Write(data)
 	}
 	return err
 }

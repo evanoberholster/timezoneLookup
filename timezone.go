@@ -5,7 +5,6 @@
 package timezoneLookup
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -13,6 +12,7 @@ import (
 	"time"
 
 	"github.com/evanoberholster/timezoneLookup/pb"
+	json "github.com/goccy/go-json"
 )
 
 //go:generate go install google.golang.org/protobuf/cmd/protoc-gen-go@latest

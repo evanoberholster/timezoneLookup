@@ -7,12 +7,12 @@ package timezoneLookup
 import (
 	"bytes"
 	"encoding/binary"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 
 	"github.com/evanoberholster/timezoneLookup/pb"
+	json "github.com/goccy/go-json"
 	"github.com/klauspost/compress/snappy"
 	"github.com/vmihailenco/msgpack/v5"
 	bolt "go.etcd.io/bbolt"
