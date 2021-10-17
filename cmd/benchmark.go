@@ -1,4 +1,5 @@
-// +build: benchmark
+//go:build benchmark
+// +build benchmark
 
 // Copyright 2018 Evan Oberholster.
 //

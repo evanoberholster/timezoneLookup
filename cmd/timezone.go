@@ -7,12 +7,14 @@ package main
 import (
 	"archive/zip"
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 
 	timezone "github.com/evanoberholster/timezoneLookup"
 )
@@ -42,7 +44,11 @@ func Main() error {
 	if *storageType == "memory" {
 		tz = timezone.MemoryStorage(*snappy, *dbFilename)
 	} else if *storageType == "boltdb" {
-		tz = timezone.BoltdbStorage(*snappy, *dbFilename, *encoding)
+		e, err := timezone.EncodingFromString(*encoding)
+		if err != nil {
+			return err
+		}
+		tz = timezone.BoltdbStorage(*snappy, *dbFilename, e)
 	} else {
 		return errors.New("\"-db\" No database type specified")
 	}
@@ -50,9 +56,15 @@ func Main() error {
 	if *jsonFilename == "" {
 		return errors.New("\"-json\" No GeoJSON source file specified")
 	}
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
+	defer cancel()
 	if _, err := os.Stat(*jsonFilename); err != nil && os.IsNotExist(err) {
 		log.Println("Downloading " + *jsonURL)
-		resp, err := http.Get(*jsonURL)
+		req, err := http.NewRequest("GET", *jsonURL, nil)
+		if err != nil {
+			return err
+		}
+		resp, err := http.DefaultClient.Do(req.WithContext(ctx))
 		if err != nil {
 			return err
 		}

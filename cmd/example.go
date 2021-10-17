@@ -1,3 +1,6 @@
+//go:build example
+// +build example
+
 // Copyright 2018 Evan Oberholster.
 //
 // SPDX-License-Identifier: MIT

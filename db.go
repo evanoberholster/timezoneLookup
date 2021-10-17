@@ -8,6 +8,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 
 	"github.com/klauspost/compress/snappy"
@@ -20,7 +21,7 @@ type Store struct { // Database struct
 	pIndex   []PolygonIndex
 	filename string
 	snappy   bool
-	encoding string
+	encoding encoding
 }
 
 type PolygonIndex struct {
@@ -30,7 +31,7 @@ type PolygonIndex struct {
 	Min  Coord  `json:"min"`
 }
 
-func BoltdbStorage(snappy bool, filename string, encoding string) TimezoneInterface {
+func BoltdbStorage(snappy bool, filename string, encoding encoding) TimezoneInterface {
 	if snappy {
 		filename = filename + ".snap.db"
 	} else {
@@ -48,6 +49,33 @@ func (s *Store) Close() {
 	defer s.db.Close()
 }
 
+type encoding struct {
+	Type uint8
+}
+
+func (e encoding) String() string {
+	if e == EncMsgPack {
+		return "msgpack"
+	}
+	return "json"
+}
+func EncodingFromString(s string) (encoding, error) {
+	switch s {
+	case "msgpack":
+		return EncMsgPack, nil
+	case "json":
+		return EncJSON, nil
+	default:
+		return EncUnknown, fmt.Errorf("unknown encoding %q (neither msgpack, nor json)", s)
+	}
+}
+
+var (
+	EncUnknown = encoding{}
+	EncMsgPack = encoding{1}
+	EncJSON    = encoding{2}
+)
+
 func (s *Store) LoadTimezones() error {
 	if _, err := os.Stat(s.filename); os.IsNotExist(err) {
 		return errors.New(errNotExistDatabase)
@@ -61,10 +89,10 @@ func (s *Store) LoadTimezones() error {
 		// Assume bucket exists and has keys
 		b := tx.Bucket([]byte("Index"))
 
-		var err error
-		b.ForEach(func(k, v []byte) error {
+		return b.ForEach(func(k, v []byte) error {
 			var index PolygonIndex
-			if s.encoding == "msgpack" {
+			var err error
+			if s.encoding == EncMsgPack {
 				err = msgpack.Unmarshal(v, &index)
 			} else {
 				err = json.Unmarshal(v, &index)
@@ -76,7 +104,6 @@ func (s *Store) LoadTimezones() error {
 			s.pIndex = append(s.pIndex, index)
 			return nil
 		})
-		return nil
 	})
 }
 
@@ -113,7 +140,9 @@ func (s *Store) CreateTimezones(jsonFilename string) error {
 		return err
 	}
 	for _, tz := range tzs {
-		s.InsertPolygons(tz)
+		if err := s.InsertPolygons(tz); err != nil {
+			return err
+		}
 	}
 	return nil
 }
@@ -142,9 +171,9 @@ func (s *Store) createBuckets() error {
 	})
 }
 
-func (s *Store) InsertPolygons(tz Timezone) {
+func (s *Store) InsertPolygons(tz Timezone) error {
 	for _, polygon := range tz.Polygons {
-		s.db.Update(func(tx *bolt.Tx) error {
+		if err := s.db.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte("Polygon"))
 			i := tx.Bucket([]byte("Index"))
 
@@ -161,7 +190,7 @@ func (s *Store) InsertPolygons(tz Timezone) {
 			var bufPolygon, bufIndex []byte
 			var err error
 
-			if s.encoding == "msgpack" {
+			if s.encoding == EncMsgPack {
 				// Marshal Polygons
 				bufPolygon, err = msgpack.Marshal(polygon)
 				if err != nil {
@@ -191,8 +220,11 @@ func (s *Store) InsertPolygons(tz Timezone) {
 				return err
 			}
 			return b.Put(itob(intId), bufPolygon)
-		})
+		}); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (s *Store) loadPolygon(id uint64) (Polygon, error) {
@@ -207,7 +239,7 @@ func (s *Store) loadPolygon(id uint64) (Polygon, error) {
 				return err
 			}
 		}
-		if s.encoding == "msgpack" {
+		if s.encoding == EncMsgPack {
 			return msgpack.Unmarshal(v, &polygon)
 		} else {
 			return json.Unmarshal(v, &polygon)

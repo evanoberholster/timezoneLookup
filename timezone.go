@@ -67,7 +67,7 @@ type Config struct {
 	DatabaseName string
 	DatabaseType string
 	Snappy       bool
-	Encoding     string
+	Encoding     encoding
 }
 
 var Tz TimezoneInterface

@@ -23,7 +23,7 @@ func BenchmarkLookup(b *testing.B) {
 		DatabaseType: "boltdb",   // memory or boltdb
 		DatabaseName: "timezone", // Name without suffix
 		Snappy:       true,
-		Encoding:     "msgpack", // json or msgpack
+		Encoding:     timezone.EncMsgPack, // json or msgpack
 	})
 	if err != nil {
 		b.Fatal(err)
