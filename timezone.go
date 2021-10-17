@@ -11,7 +11,12 @@ import (
 	"os"
 	"runtime"
 	"time"
+
+	"github.com/evanoberholster/timezoneLookup/pb"
 )
+
+//go:generate go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+//go:generate protoc --proto_path=pb --go_out=pb --go_opt=paths=source_relative pb/timezone.proto
 
 const (
 	WithSnappy = true
@@ -58,9 +63,47 @@ type Polygon struct {
 	Coords []Coord `json:"coords"`
 }
 
+func (dst *Polygon) FromPB(src *pb.Polygon) {
+	dst.Max.FromPB(src.Max)
+	dst.Min.FromPB(src.Min)
+	if cap(dst.Coords) < len(src.Coords) {
+		dst.Coords = make([]Coord, len(src.Coords))
+	} else {
+		dst.Coords = dst.Coords[:len(src.Coords)]
+	}
+	for i, c := range src.Coords {
+		dst.Coords[i].FromPB(c)
+	}
+}
+func (src Polygon) ToPB(dst *pb.Polygon) {
+	dst.Reset()
+	dst.Max = src.Max.ToPB(dst.Max)
+	dst.Min = src.Min.ToPB(dst.Min)
+	if cap(dst.Coords) < len(src.Coords) {
+		dst.Coords = make([]*pb.Coord, len(src.Coords))
+	} else {
+		dst.Coords = dst.Coords[:len(src.Coords)]
+	}
+	for i, c := range src.Coords {
+		dst.Coords[i] = c.ToPB(dst.Coords[i])
+	}
+}
+
 type Coord struct {
 	Lat float32 `json:"lat"`
 	Lon float32 `json:"lon"`
+}
+
+func (src Coord) ToPB(dst *pb.Coord) *pb.Coord {
+	if dst == nil {
+		return &pb.Coord{Lat: src.Lat, Lon: src.Lon}
+	}
+	dst.Reset()
+	dst.Lat, dst.Lon = src.Lat, src.Lon
+	return dst
+}
+func (dst *Coord) FromPB(src *pb.Coord) {
+	dst.Lat, dst.Lon = src.Lat, src.Lon
 }
 
 type Config struct {

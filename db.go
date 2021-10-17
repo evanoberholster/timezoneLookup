@@ -11,9 +11,11 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/evanoberholster/timezoneLookup/pb"
 	"github.com/klauspost/compress/snappy"
 	"github.com/vmihailenco/msgpack/v5"
 	bolt "go.etcd.io/bbolt"
+	"google.golang.org/protobuf/proto"
 )
 
 type Store struct { // Database struct
@@ -31,12 +33,24 @@ type PolygonIndex struct {
 	Min  Coord  `json:"min"`
 }
 
+func (dst *PolygonIndex) FromPB(src *pb.PolygonIndex) {
+	dst.Id, dst.Tzid = src.Id, src.Tzid
+	dst.Max.FromPB(src.Max)
+	dst.Min.FromPB(src.Min)
+}
+func (src *PolygonIndex) ToPB(dst *pb.PolygonIndex) {
+	dst.Reset()
+	dst.Id, dst.Tzid = src.Id, src.Tzid
+	dst.Max = src.Max.ToPB(dst.Max)
+	dst.Min = src.Min.ToPB(dst.Min)
+}
+
 func BoltdbStorage(snappy bool, filename string, encoding encoding) TimezoneInterface {
+	filename += "." + encoding.String()
 	if snappy {
-		filename = filename + ".snap.db"
-	} else {
-		filename = filename + ".db"
+		filename += ".snap"
 	}
+	filename += ".db"
 	return &Store{
 		filename: filename,
 		pIndex:   []PolygonIndex{},
@@ -54,10 +68,16 @@ type encoding struct {
 }
 
 func (e encoding) String() string {
-	if e == EncMsgPack {
+	switch e {
+	case EncMsgPack:
 		return "msgpack"
+	case EncJSON:
+		return "json"
+	case EncProtobuf:
+		return "protobuf"
+	default:
+		return "unknown"
 	}
-	return "json"
 }
 func EncodingFromString(s string) (encoding, error) {
 	switch s {
@@ -65,15 +85,18 @@ func EncodingFromString(s string) (encoding, error) {
 		return EncMsgPack, nil
 	case "json":
 		return EncJSON, nil
+	case "protobuf":
+		return EncProtobuf, nil
 	default:
 		return EncUnknown, fmt.Errorf("unknown encoding %q (neither msgpack, nor json)", s)
 	}
 }
 
 var (
-	EncUnknown = encoding{}
-	EncMsgPack = encoding{1}
-	EncJSON    = encoding{2}
+	EncUnknown  = encoding{}
+	EncMsgPack  = encoding{1}
+	EncJSON     = encoding{2}
+	EncProtobuf = encoding{3}
 )
 
 func (s *Store) LoadTimezones() error {
@@ -84,6 +107,24 @@ func (s *Store) LoadTimezones() error {
 	if err != nil {
 		return err
 	}
+	var pbIndex pb.PolygonIndex
+	U := func(index *PolygonIndex, v []byte) error {
+		if err := proto.Unmarshal(v, &pbIndex); err != nil {
+			return err
+		}
+		index.FromPB(&pbIndex)
+		return nil
+	}
+	switch s.encoding {
+	case EncMsgPack:
+		U = func(index *PolygonIndex, v []byte) error {
+			return msgpack.Unmarshal(v, index)
+		}
+	case EncJSON:
+		U = func(index *PolygonIndex, v []byte) error {
+			return json.Unmarshal(v, index)
+		}
+	}
 	// Load polygon indexes
 	return s.db.View(func(tx *bolt.Tx) error {
 		// Assume bucket exists and has keys
@@ -91,13 +132,7 @@ func (s *Store) LoadTimezones() error {
 
 		return b.ForEach(func(k, v []byte) error {
 			var index PolygonIndex
-			var err error
-			if s.encoding == EncMsgPack {
-				err = msgpack.Unmarshal(v, &index)
-			} else {
-				err = json.Unmarshal(v, &index)
-			}
-			if err != nil {
+			if err := U(&index, v); err != nil {
 				return err
 			}
 			index.Id = binary.BigEndian.Uint64(k)
@@ -172,6 +207,39 @@ func (s *Store) createBuckets() error {
 }
 
 func (s *Store) InsertPolygons(tz Timezone) error {
+	var pbPoly pb.Polygon
+	var pbIndex pb.PolygonIndex
+	E := func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
+		polygon.ToPB(&pbPoly)
+		bufPolygon, err := proto.Marshal(&pbPoly)
+		if err != nil {
+			return nil, nil, err
+		}
+		index.ToPB(&pbIndex)
+		bufIndex, err := proto.Marshal(&pbIndex)
+		return bufPolygon, bufIndex, err
+	}
+	switch s.encoding {
+	case EncMsgPack:
+		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
+			bufPolygon, err := msgpack.Marshal(polygon)
+			if err != nil {
+				return nil, nil, err
+			}
+			// Marshal Polygon Index
+			bufIndex, err := msgpack.Marshal(index)
+			return bufPolygon, bufIndex, err
+		}
+	case EncJSON:
+		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
+			bufPolygon, err := json.Marshal(polygon)
+			if err != nil {
+				return nil, nil, err
+			}
+			bufIndex, err := json.Marshal(index)
+			return bufPolygon, bufIndex, err
+		}
+	}
 	for _, polygon := range tz.Polygons {
 		if err := s.db.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte("Polygon"))
@@ -187,29 +255,9 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 				Max:  polygon.Max,
 				Min:  polygon.Min,
 			}
-			var bufPolygon, bufIndex []byte
-			var err error
-
-			if s.encoding == EncMsgPack {
-				// Marshal Polygons
-				bufPolygon, err = msgpack.Marshal(polygon)
-				if err != nil {
-					return err
-				}
-				// Marshal Polygon Index
-				bufIndex, err = msgpack.Marshal(index)
-				if err != nil {
-					return err
-				}
-			} else {
-				bufPolygon, err = json.Marshal(polygon)
-				if err != nil {
-					return err
-				}
-				bufIndex, err = json.Marshal(index)
-				if err != nil {
-					return err
-				}
+			bufPolygon, bufIndex, err := E(polygon, index)
+			if err != nil {
+				return err
 			}
 			if s.snappy {
 				bufPolygon = snappy.Encode(nil, bufPolygon)
@@ -228,6 +276,24 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 }
 
 func (s *Store) loadPolygon(id uint64) (Polygon, error) {
+	var pbPoly pb.Polygon
+	U := func(polygon *Polygon, v []byte) error {
+		if err := proto.Unmarshal(v, &pbPoly); err != nil {
+			return err
+		}
+		polygon.FromPB(&pbPoly)
+		return nil
+	}
+	switch s.encoding {
+	case EncMsgPack:
+		U = func(polygon *Polygon, v []byte) error {
+			return msgpack.Unmarshal(v, polygon)
+		}
+	case EncJSON:
+		U = func(polygon *Polygon, v []byte) error {
+			return json.Unmarshal(v, polygon)
+		}
+	}
 	var polygon Polygon
 	err := s.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte("Polygon"))
@@ -239,11 +305,7 @@ func (s *Store) loadPolygon(id uint64) (Polygon, error) {
 				return err
 			}
 		}
-		if s.encoding == EncMsgPack {
-			return msgpack.Unmarshal(v, &polygon)
-		} else {
-			return json.Unmarshal(v, &polygon)
-		}
+		return U(&polygon, v)
 	})
 	return polygon, err
 }

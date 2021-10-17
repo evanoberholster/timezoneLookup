@@ -14,22 +14,35 @@ import (
 )
 
 func BenchmarkLookup(b *testing.B) {
-	if _, err := os.Stat("timezone.snap.db"); err != nil && os.IsNotExist(err) {
-		cmd := exec.Command("go", "run", "cmd/timezone.go")
-		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-		_ = cmd.Run()
-	}
-	tz, err := timezone.LoadTimezones(timezone.Config{
-		DatabaseType: "boltdb",   // memory or boltdb
-		DatabaseName: "timezone", // Name without suffix
-		Snappy:       true,
-		Encoding:     timezone.EncMsgPack, // json or msgpack
-	})
-	if err != nil {
-		b.Fatal(err)
-	}
-	defer tz.Close()
+	for _, e := range []string{"msgpack", "protobuf"} {
+		e := e
+		b.Run(e, func(b *testing.B) {
+			if _, err := os.Stat("timezone." + e + ".snap.db"); err != nil && os.IsNotExist(err) {
+				cmd := exec.Command("go", "run", "cmd/timezone.go", "-encoding="+e)
+				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+				_ = cmd.Run()
+			}
+			enc, err := timezone.EncodingFromString(e)
+			if err != nil {
+				b.Fatal(err)
+			}
+			tz, err := timezone.LoadTimezones(timezone.Config{
+				DatabaseType: "boltdb",   // memory or boltdb
+				DatabaseName: "timezone", // Name without suffix
+				Snappy:       true,
+				Encoding:     enc, // json or msgpack
+			})
+			if err != nil {
+				b.Fatal(err)
+			}
+			defer tz.Close()
 
+			benchLookup(b, tz)
+		})
+	}
+}
+
+func benchLookup(b *testing.B, tz timezone.TimezoneInterface) {
 	querys := []timezone.Coord{
 		{Lat: 5.261417, Lon: -3.925778},   // Abijan Airport
 		{Lat: -15.678889, Lon: 34.973889}, // Blantyre Airport
