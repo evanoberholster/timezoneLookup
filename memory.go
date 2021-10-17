@@ -1,10 +1,15 @@
+// Copyright 2018 Evan Oberholster.
+//
+// SPDX-License-Identifier: MIT
+
 package timezoneLookup
 
 import (
 	"encoding/json"
 	"errors"
-	"github.com/golang/snappy"
 	"os"
+
+	"github.com/golang/snappy"
 )
 
 type Memory struct { // Memory struct

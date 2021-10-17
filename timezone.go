@@ -1,3 +1,7 @@
+// Copyright 2018 Evan Oberholster.
+//
+// SPDX-License-Identifier: MIT
+
 package timezoneLookup
 
 import (

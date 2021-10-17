@@ -2,7 +2,7 @@
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package timezoneLookup_test
 
 import (
 	"fmt"
@@ -10,7 +10,7 @@ import (
 	timezone "github.com/evanoberholster/timezoneLookup"
 )
 
-func main() {
+func ExampleQuery() {
 	tz, err := timezone.LoadTimezones(timezone.Config{
 		DatabaseType: "boltdb",   // memory or boltdb
 		DatabaseName: "timezone", // Name without suffix

@@ -1,13 +1,18 @@
+// Copyright 2018 Evan Oberholster.
+//
+// SPDX-License-Identifier: MIT
+
 package timezoneLookup
 
 import (
 	"encoding/binary"
 	"encoding/json"
 	"errors"
+	"os"
+
 	"github.com/golang/snappy"
 	"github.com/vmihailenco/msgpack"
 	bolt "go.etcd.io/bbolt"
-	"os"
 )
 
 type Store struct { // Database struct

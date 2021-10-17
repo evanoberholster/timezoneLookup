@@ -1,20 +1,17 @@
-// +build: benchmark
-
 // Copyright 2018 Evan Oberholster.
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package timezoneLookup_test
 
 import (
 	"fmt"
-	"time"
+	"testing"
 
 	timezone "github.com/evanoberholster/timezoneLookup"
 )
 
-func main() {
-
+func BenchmarkLookup(b *testing.B) {
 	tz, err := timezone.LoadTimezones(timezone.Config{
 		DatabaseType: "boltdb",   // memory or boltdb
 		DatabaseName: "timezone", // Name without suffix
@@ -22,8 +19,9 @@ func main() {
 		Encoding:     "msgpack", // json or msgpack
 	})
 	if err != nil {
-		fmt.Println(err)
+		b.Fatal(err)
 	}
+	defer tz.Close()
 
 	querys := []timezone.Coord{
 		{Lat: 5.261417, Lon: -3.925778},   // Abijan Airport
@@ -88,22 +86,15 @@ func main() {
 		{Lat: 42.0000, Lon: -87.5000},
 	}
 
-	var times []int64
-	var total int64
-
-	for _, query := range querys {
-		start := time.Now()
-		res, err := tz.Query(query)
-		if err != nil {
-			fmt.Println(err)
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		for _, query := range querys {
+			_, err := tz.Query(query)
+			if err != nil {
+				fmt.Println(err)
+			}
 		}
-		elapsed := time.Since(start)
-		fmt.Println("Query Result: ", res, " took: ", elapsed)
-		times = append(times, elapsed.Nanoseconds())
-		total += elapsed.Nanoseconds()
 	}
-
-	fmt.Println("Average time per query: ", time.Duration(total/int64(len(times))))
-	tz.Close()
+	b.StopTimer()
 	timezone.PrintMemUsage()
 }

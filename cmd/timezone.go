@@ -1,9 +1,15 @@
+// Copyright 2018 Evan Oberholster.
+//
+// SPDX-License-Identifier: MIT
+
 package main
 
 import (
+	"errors"
 	"flag"
-	timezone "github.com/evanoberholster/timezoneLookup"
 	"log"
+
+	timezone "github.com/evanoberholster/timezoneLookup"
 )
 
 var (
@@ -15,33 +21,33 @@ var (
 )
 
 func main() {
+	if err := Main(); err != nil {
+		log.Fatalln(err)
+	}
+}
+func Main() error {
 	flag.Parse()
 
 	if *dbFilename == "" || *jsonFilename == "" {
 		log.Printf("Options:\n\t -snappy=true\t Use Snappy compression\n\t -json=filename\t GEOJSON filename \n\t -db=filename\t Database destination\n\t -type=boltdb\t Type of Storage (boltdb or memory) ")
+		return nil
+	}
+	var tz timezone.TimezoneInterface
+	if *storageType == "memory" {
+		tz = timezone.MemoryStorage(*snappy, *dbFilename)
+	} else if *storageType == "boltdb" {
+		tz = timezone.BoltdbStorage(*snappy, *dbFilename, *encoding)
 	} else {
-		var tz timezone.TimezoneInterface
-		if *storageType == "memory" {
-			tz = timezone.MemoryStorage(*snappy, *dbFilename)
-		} else if *storageType == "boltdb" {
-			tz = timezone.BoltdbStorage(*snappy, *dbFilename, *encoding)
-		} else {
-			log.Println("\"-db\" No database type specified")
-			return
-		}
-
-		if *jsonFilename != "" {
-			err := tz.CreateTimezones(*jsonFilename)
-			if err != nil {
-				log.Println(err)
-				return
-			}
-		} else {
-			log.Println("\"-json\" No GeoJSON source file specified")
-			return
-		}
-
-		tz.Close()
+		return errors.New("\"-db\" No database type specified")
 	}
 
+	if *jsonFilename == "" {
+		return errors.New("\"-json\" No GeoJSON source file specified")
+	}
+	err := tz.CreateTimezones(*jsonFilename)
+	if err != nil {
+		return err
+	}
+	tz.Close()
+	return nil
 }
