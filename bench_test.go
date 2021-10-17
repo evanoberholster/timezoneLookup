@@ -6,12 +6,19 @@ package timezoneLookup_test
 
 import (
 	"fmt"
+	"os"
+	"os/exec"
 	"testing"
 
 	timezone "github.com/evanoberholster/timezoneLookup"
 )
 
 func BenchmarkLookup(b *testing.B) {
+	if _, err := os.Stat("timezone.snap.db"); err != nil && os.IsNotExist(err) {
+		cmd := exec.Command("go", "run", "cmd/timezone.go")
+		cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+		_ = cmd.Run()
+	}
 	tz, err := timezone.LoadTimezones(timezone.Config{
 		DatabaseType: "boltdb",   // memory or boltdb
 		DatabaseName: "timezone", // Name without suffix

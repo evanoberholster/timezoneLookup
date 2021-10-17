@@ -10,9 +10,8 @@ import (
 	"errors"
 	"os"
 
-	"github.com/golang/snappy"
-	//"github.com/klauspost/compress/snappy"
-	"github.com/vmihailenco/msgpack"
+	"github.com/klauspost/compress/snappy"
+	"github.com/vmihailenco/msgpack/v5"
 	bolt "go.etcd.io/bbolt"
 )
 

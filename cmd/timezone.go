@@ -74,6 +74,7 @@ func Main() error {
 		if err != nil {
 			return err
 		}
+		defer func() { _ = os.Remove(fh.Name()) }()
 		defer fh.Close()
 		if _, err = io.Copy(fh, sr); err != nil {
 			return err
