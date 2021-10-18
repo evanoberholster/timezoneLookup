@@ -18,9 +18,6 @@ import (
 	"github.com/evanoberholster/timezoneLookup/cp"
 )
 
-//go:generate go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-//go:generate protoc --proto_path=pb --go_out=pb --go_opt=paths=source_relative pb/timezone.proto
-
 const (
 	WithSnappy = true
 	NoSnappy   = false
