@@ -346,6 +346,7 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 			return bufPolygon, bufIndex, nil
 		}
 	}
+	var snapBuf []byte
 	for _, polygon := range tz.Polygons {
 		if err := s.db.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte("Polygon"))
@@ -366,7 +367,8 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 				return err
 			}
 			if s.snappy {
-				bufPolygon = snappy.Encode(nil, bufPolygon)
+				snapBuf = snappy.Encode(snapBuf[:0], bufPolygon)
+				bufPolygon = snapBuf
 			}
 			// Write Polygon Index
 			err = i.Put(itob(intId), bufIndex)
