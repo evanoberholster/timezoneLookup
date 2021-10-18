@@ -11,8 +11,11 @@ import (
 	"runtime"
 	"time"
 
-	"github.com/evanoberholster/timezoneLookup/pb"
 	json "github.com/goccy/go-json"
+
+	"github.com/evanoberholster/timezoneLookup/pb"
+
+	"github.com/evanoberholster/timezoneLookup/cp"
 )
 
 //go:generate go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
@@ -89,6 +92,55 @@ func (src Polygon) ToPB(dst *pb.Polygon) {
 	}
 }
 
+func (dst *Polygon) FromCapnp(src *cp.Polygon) error {
+	if c, err := src.Max(); err != nil {
+		return err
+	} else {
+		dst.Max.FromCapnp(&c)
+	}
+	if c, err := src.Min(); err != nil {
+		return err
+	} else {
+		dst.Min.FromCapnp(&c)
+	}
+	if coords, err := src.Coords(); err != nil {
+		return err
+	} else {
+		if cap(dst.Coords) < coords.Len() {
+			dst.Coords = make([]Coord, coords.Len())
+		} else {
+			dst.Coords = dst.Coords[:coords.Len()]
+		}
+		for i := range dst.Coords {
+			c := coords.At(i)
+			dst.Coords[i].FromCapnp(&c)
+		}
+	}
+	return nil
+}
+func (src Polygon) ToCapnp(dst *cp.Polygon) error {
+	if c, err := dst.NewMax(); err != nil {
+		return err
+	} else {
+		src.Max.ToCapnp(&c)
+	}
+	if c, err := dst.NewMin(); err != nil {
+		return err
+	} else {
+		src.Min.ToCapnp(&c)
+	}
+	coords, err := dst.NewCoords(int32(len(src.Coords)))
+	if err != nil {
+		return err
+	}
+	for i, c := range src.Coords {
+		c2 := coords.At(i)
+		c.ToCapnp(&c2)
+		coords.Set(i, c2)
+	}
+	return nil
+}
+
 type Coord struct {
 	Lat float32 `json:"lat"`
 	Lon float32 `json:"lon"`
@@ -104,6 +156,14 @@ func (src Coord) ToPB(dst *pb.Coord) *pb.Coord {
 }
 func (dst *Coord) FromPB(src *pb.Coord) {
 	dst.Lat, dst.Lon = src.Lat, src.Lon
+}
+
+func (src Coord) ToCapnp(dst *cp.Coord) {
+	dst.SetLat(src.Lat)
+	dst.SetLon(src.Lon)
+}
+func (dst *Coord) FromCapnp(src *cp.Coord) {
+	dst.Lat, dst.Lon = src.Lat(), src.Lon()
 }
 
 type Config struct {

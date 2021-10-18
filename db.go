@@ -11,6 +11,8 @@ import (
 	"fmt"
 	"os"
 
+	"capnproto.org/go/capnp/v3"
+	"github.com/evanoberholster/timezoneLookup/cp"
 	"github.com/evanoberholster/timezoneLookup/pb"
 	json "github.com/goccy/go-json"
 	"github.com/klauspost/compress/snappy"
@@ -46,6 +48,42 @@ func (src *PolygonIndex) ToPB(dst *pb.PolygonIndex) {
 	dst.Min = src.Min.ToPB(dst.Min)
 }
 
+func (dst *PolygonIndex) FromCapnp(src *cp.PolygonIndex) error {
+	dst.Id = src.Id()
+	var err error
+	if dst.Tzid, err = src.Tzid(); err != nil {
+		return err
+	}
+	if c, err := src.Max(); err != nil {
+		return err
+	} else {
+		dst.Max.FromCapnp(&c)
+	}
+	if c, err := src.Min(); err != nil {
+		return err
+	} else {
+		dst.Min.FromCapnp(&c)
+	}
+	return nil
+}
+func (src *PolygonIndex) ToCapnp(dst *cp.PolygonIndex) error {
+	dst.SetId(src.Id)
+	if err := dst.SetTzid(src.Tzid); err != nil {
+		return err
+	}
+	if c, err := dst.NewMax(); err != nil {
+		return err
+	} else {
+		src.Max.ToCapnp(&c)
+	}
+	if c, err := dst.NewMin(); err != nil {
+		return err
+	} else {
+		src.Min.ToCapnp(&c)
+	}
+	return nil
+}
+
 func BoltdbStorage(snappy bool, filename string, encoding encoding) TimezoneInterface {
 	filename += "." + encoding.String()
 	if snappy {
@@ -76,6 +114,8 @@ func (e encoding) String() string {
 		return "json"
 	case EncProtobuf:
 		return "protobuf"
+	case EncCapnProto:
+		return "capnp"
 	default:
 		return "unknown"
 	}
@@ -88,16 +128,19 @@ func EncodingFromString(s string) (encoding, error) {
 		return EncJSON, nil
 	case "protobuf":
 		return EncProtobuf, nil
+	case "capnp":
+		return EncCapnProto, nil
 	default:
 		return EncUnknown, fmt.Errorf("unknown encoding %q (neither msgpack, nor json)", s)
 	}
 }
 
 var (
-	EncUnknown  = encoding{}
-	EncMsgPack  = encoding{1}
-	EncJSON     = encoding{2}
-	EncProtobuf = encoding{3}
+	EncUnknown   = encoding{}
+	EncMsgPack   = encoding{1}
+	EncJSON      = encoding{2}
+	EncProtobuf  = encoding{3}
+	EncCapnProto = encoding{6}
 )
 
 func (s *Store) LoadTimezones() error {
@@ -108,6 +151,7 @@ func (s *Store) LoadTimezones() error {
 	if err != nil {
 		return err
 	}
+
 	var pbIndex pb.PolygonIndex
 	var U func(index *PolygonIndex, v []byte) error
 	switch s.encoding {
@@ -126,6 +170,18 @@ func (s *Store) LoadTimezones() error {
 			}
 			index.FromPB(&pbIndex)
 			return nil
+		}
+	case EncCapnProto:
+		U = func(index *PolygonIndex, v []byte) error {
+			msg, err := capnp.Unmarshal(v)
+			if err != nil {
+				return err
+			}
+			cpIndex, err := cp.ReadRootPolygonIndex(msg)
+			if err != nil {
+				return err
+			}
+			return index.FromCapnp(&cpIndex)
 		}
 	}
 	// Load polygon indexes
@@ -254,6 +310,41 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 			bufIndex, err := mo.MarshalAppend(bufIndex[:0], &pbIndex)
 			return bufPolygon, bufIndex, err
 		}
+	case EncCapnProto:
+		var abP [1 << 24]byte
+		var abI [1 << 10]byte
+		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
+			msgP, segP, err := capnp.NewMessage(capnp.SingleSegment(abP[:0]))
+			if err != nil {
+				return bufPolygon, bufIndex, err
+			}
+			cpPoly, err := cp.NewRootPolygon(segP)
+			if err != nil {
+				return bufPolygon, bufIndex, err
+			}
+			if err = polygon.ToCapnp(&cpPoly); err != nil {
+				return bufPolygon, bufIndex, err
+			}
+			if bufPolygon, err = msgP.Marshal(); err != nil {
+				return bufPolygon, bufIndex, err
+			}
+
+			msgI, segI, err := capnp.NewMessage(capnp.SingleSegment(abI[:0]))
+			if err != nil {
+				return bufPolygon, bufIndex, err
+			}
+			cpIndex, err := cp.NewRootPolygonIndex(segI)
+			if err != nil {
+				return bufPolygon, bufIndex, err
+			}
+			if err = index.ToCapnp(&cpIndex); err != nil {
+				return bufPolygon, bufIndex, err
+			}
+			if bufIndex, err = msgI.Marshal(); err != nil {
+				return bufPolygon, bufIndex, err
+			}
+			return bufPolygon, bufIndex, nil
+		}
 	}
 	for _, polygon := range tz.Polygons {
 		if err := s.db.Update(func(tx *bolt.Tx) error {
@@ -309,6 +400,18 @@ func (s *Store) loadPolygon(id uint64) (Polygon, error) {
 			}
 			polygon.FromPB(&pbPoly)
 			return nil
+		}
+	case EncCapnProto:
+		U = func(polygon *Polygon, v []byte) error {
+			msg, err := capnp.Unmarshal(v)
+			if err != nil {
+				return err
+			}
+			cpPoly, err := cp.ReadRootPolygon(msg)
+			if err != nil {
+				return err
+			}
+			return polygon.FromCapnp(&cpPoly)
 		}
 	}
 	var polygon Polygon
