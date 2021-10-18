@@ -15,7 +15,7 @@ func ExampleQuery() {
 		DatabaseType: "boltdb",   // memory or boltdb
 		DatabaseName: "timezone", // Name without suffix
 		Snappy:       true,
-		Encoding:     timezone.EncMsgPack, // json or msgpack
+		Encoding:     timezone.EncCapnProto, // json or capnp
 	})
 	if err != nil {
 		fmt.Println(err)

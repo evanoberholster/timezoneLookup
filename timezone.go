@@ -13,8 +13,6 @@ import (
 
 	json "github.com/goccy/go-json"
 
-	"github.com/evanoberholster/timezoneLookup/pb"
-
 	"github.com/evanoberholster/timezoneLookup/cp"
 )
 
@@ -61,32 +59,6 @@ type Polygon struct {
 	Max    Coord   `json:"max"`
 	Min    Coord   `json:"min"`
 	Coords []Coord `json:"coords"`
-}
-
-func (dst *Polygon) FromPB(src *pb.Polygon) {
-	dst.Max.FromPB(src.Max)
-	dst.Min.FromPB(src.Min)
-	if cap(dst.Coords) < len(src.Coords) {
-		dst.Coords = make([]Coord, len(src.Coords))
-	} else {
-		dst.Coords = dst.Coords[:len(src.Coords)]
-	}
-	for i, c := range src.Coords {
-		dst.Coords[i].FromPB(c)
-	}
-}
-func (src Polygon) ToPB(dst *pb.Polygon) {
-	dst.Reset()
-	dst.Max = src.Max.ToPB(dst.Max)
-	dst.Min = src.Min.ToPB(dst.Min)
-	if cap(dst.Coords) < len(src.Coords) {
-		dst.Coords = make([]*pb.Coord, len(src.Coords))
-	} else {
-		dst.Coords = dst.Coords[:len(src.Coords)]
-	}
-	for i, c := range src.Coords {
-		dst.Coords[i] = c.ToPB(dst.Coords[i])
-	}
 }
 
 func (dst *Polygon) FromCapnp(src *cp.Polygon) error {
@@ -141,18 +113,6 @@ func (src Polygon) ToCapnp(dst *cp.Polygon) error {
 type Coord struct {
 	Lat float32 `json:"lat"`
 	Lon float32 `json:"lon"`
-}
-
-func (src Coord) ToPB(dst *pb.Coord) *pb.Coord {
-	if dst == nil {
-		return &pb.Coord{Lat: src.Lat, Lon: src.Lon}
-	}
-	dst.Reset()
-	dst.Lat, dst.Lon = src.Lat, src.Lon
-	return dst
-}
-func (dst *Coord) FromPB(src *pb.Coord) {
-	dst.Lat, dst.Lon = src.Lat, src.Lon
 }
 
 func (src Coord) ToCapnp(dst *cp.Coord) {

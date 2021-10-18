@@ -13,12 +13,9 @@ import (
 
 	"capnproto.org/go/capnp/v3"
 	"github.com/evanoberholster/timezoneLookup/cp"
-	"github.com/evanoberholster/timezoneLookup/pb"
 	json "github.com/goccy/go-json"
 	"github.com/klauspost/compress/snappy"
-	"github.com/vmihailenco/msgpack/v5"
 	bolt "go.etcd.io/bbolt"
-	"google.golang.org/protobuf/proto"
 )
 
 type Store struct { // Database struct
@@ -34,18 +31,6 @@ type PolygonIndex struct {
 	Tzid string `json:"tzid"`
 	Max  Coord  `json:"max"`
 	Min  Coord  `json:"min"`
-}
-
-func (dst *PolygonIndex) FromPB(src *pb.PolygonIndex) {
-	dst.Id, dst.Tzid = src.Id, src.Tzid
-	dst.Max.FromPB(src.Max)
-	dst.Min.FromPB(src.Min)
-}
-func (src *PolygonIndex) ToPB(dst *pb.PolygonIndex) {
-	dst.Reset()
-	dst.Id, dst.Tzid = src.Id, src.Tzid
-	dst.Max = src.Max.ToPB(dst.Max)
-	dst.Min = src.Min.ToPB(dst.Min)
 }
 
 func (dst *PolygonIndex) FromCapnp(src *cp.PolygonIndex) error {
@@ -108,12 +93,8 @@ type encoding struct {
 
 func (e encoding) String() string {
 	switch e {
-	case EncMsgPack:
-		return "msgpack"
 	case EncJSON:
 		return "json"
-	case EncProtobuf:
-		return "protobuf"
 	case EncCapnProto:
 		return "capnp"
 	default:
@@ -122,12 +103,8 @@ func (e encoding) String() string {
 }
 func EncodingFromString(s string) (encoding, error) {
 	switch s {
-	case "msgpack":
-		return EncMsgPack, nil
 	case "json":
 		return EncJSON, nil
-	case "protobuf":
-		return EncProtobuf, nil
 	case "capnp":
 		return EncCapnProto, nil
 	default:
@@ -137,9 +114,7 @@ func EncodingFromString(s string) (encoding, error) {
 
 var (
 	EncUnknown   = encoding{}
-	EncMsgPack   = encoding{1}
 	EncJSON      = encoding{2}
-	EncProtobuf  = encoding{3}
 	EncCapnProto = encoding{6}
 )
 
@@ -152,24 +127,11 @@ func (s *Store) LoadTimezones() error {
 		return err
 	}
 
-	var pbIndex pb.PolygonIndex
 	var U func(index *PolygonIndex, v []byte) error
 	switch s.encoding {
-	case EncMsgPack:
-		U = func(index *PolygonIndex, v []byte) error {
-			return msgpack.Unmarshal(v, index)
-		}
 	case EncJSON:
 		U = func(index *PolygonIndex, v []byte) error {
 			return json.Unmarshal(v, index)
-		}
-	case EncProtobuf:
-		U = func(index *PolygonIndex, v []byte) error {
-			if err := proto.Unmarshal(v, &pbIndex); err != nil {
-				return err
-			}
-			index.FromPB(&pbIndex)
-			return nil
 		}
 	case EncCapnProto:
 		U = func(index *PolygonIndex, v []byte) error {
@@ -269,20 +231,6 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 	var bufPolygon, bufIndex []byte
 	var E func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error)
 	switch s.encoding {
-	case EncMsgPack:
-		pBuf, iBuf := bytes.NewBuffer(bufPolygon), bytes.NewBuffer(bufIndex)
-		eP := msgpack.NewEncoder(pBuf)
-		eI := msgpack.NewEncoder(iBuf)
-		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
-			pBuf.Reset()
-			if err := eP.Encode(polygon); err != nil {
-				return nil, nil, err
-			}
-			// Marshal Polygon Index
-			iBuf.Reset()
-			err := eI.Encode(index)
-			return pBuf.Bytes(), iBuf.Bytes(), err
-		}
 	case EncJSON:
 		pBuf, iBuf := bytes.NewBuffer(bufPolygon), bytes.NewBuffer(bufIndex)
 		eP := json.NewEncoder(pBuf)
@@ -295,20 +243,6 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 			iBuf.Reset()
 			err := eI.Encode(index)
 			return pBuf.Bytes(), iBuf.Bytes(), err
-		}
-	case EncProtobuf:
-		var pbPoly pb.Polygon
-		var pbIndex pb.PolygonIndex
-		var mo proto.MarshalOptions
-		E = func(polygon Polygon, index PolygonIndex) ([]byte, []byte, error) {
-			polygon.ToPB(&pbPoly)
-			bufPolygon, err := mo.MarshalAppend(bufPolygon[:0], &pbPoly)
-			if err != nil {
-				return nil, nil, err
-			}
-			index.ToPB(&pbIndex)
-			bufIndex, err := mo.MarshalAppend(bufIndex[:0], &pbIndex)
-			return bufPolygon, bufIndex, err
 		}
 	case EncCapnProto:
 		var abP [1 << 24]byte
@@ -384,24 +318,11 @@ func (s *Store) InsertPolygons(tz Timezone) error {
 }
 
 func (s *Store) loadPolygon(id uint64) (Polygon, error) {
-	var pbPoly pb.Polygon
 	var U func(polygon *Polygon, v []byte) error
 	switch s.encoding {
-	case EncMsgPack:
-		U = func(polygon *Polygon, v []byte) error {
-			return msgpack.Unmarshal(v, polygon)
-		}
 	case EncJSON:
 		U = func(polygon *Polygon, v []byte) error {
 			return json.Unmarshal(v, polygon)
-		}
-	case EncProtobuf:
-		U = func(polygon *Polygon, v []byte) error {
-			if err := proto.Unmarshal(v, &pbPoly); err != nil {
-				return err
-			}
-			polygon.FromPB(&pbPoly)
-			return nil
 		}
 	case EncCapnProto:
 		U = func(polygon *Polygon, v []byte) error {

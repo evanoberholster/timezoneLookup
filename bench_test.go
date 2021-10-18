@@ -19,7 +19,7 @@ import (
 func BenchmarkLookup(b *testing.B) {
 	_ = os.MkdirAll("testdata", 0755)
 	tzgo := filepath.Join("..", "cmd", "timezone.go")
-	for _, e := range []string{"msgpack.snap", "msgpack", "protobuf.snap", "protobuf", "capnp.snap", "capnp", "snap.json"} {
+	for _, e := range []string{"capnp.snap", "capnp", "snap.json"} {
 		cfg := timezone.Config{
 			DatabaseName: filepath.Join("testdata", "timezone"),
 		}
