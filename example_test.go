@@ -14,7 +14,7 @@ func ExampleQuery() {
 	tz, err := timezone.LoadTimezones(timezone.Config{
 		DatabaseType: "boltdb",   // memory or boltdb
 		DatabaseName: "timezone", // Name without suffix
-		Snappy:       true,
+		Snappy:       false,
 		Encoding:     timezone.EncCapnProto, // json or capnp
 	})
 	if err != nil {
