@@ -1,11 +1,8 @@
-//go:build example
-// +build example
-
 // Copyright 2018 Evan Oberholster.
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package timezoneLookup_test
 
 import (
 	"fmt"
@@ -13,12 +10,12 @@ import (
 	timezone "github.com/evanoberholster/timezoneLookup"
 )
 
-func main() {
+func ExampleQuery() {
 	tz, err := timezone.LoadTimezones(timezone.Config{
 		DatabaseType: "boltdb",   // memory or boltdb
 		DatabaseName: "timezone", // Name without suffix
 		Snappy:       true,
-		Encoding:     "msgpack", // json or msgpack
+		Encoding:     timezone.EncMsgPack, // json or msgpack
 	})
 	if err != nil {
 		fmt.Println(err)

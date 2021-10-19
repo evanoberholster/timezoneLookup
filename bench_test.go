@@ -1,31 +1,61 @@
-//go:build benchmark
-// +build benchmark
-
 // Copyright 2018 Evan Oberholster.
 //
 // SPDX-License-Identifier: MIT
 
-package main
+package timezoneLookup_test
 
 import (
 	"fmt"
-	"time"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"testing"
 
 	timezone "github.com/evanoberholster/timezoneLookup"
 )
 
-func main() {
+func BenchmarkLookup(b *testing.B) {
+	_ = os.MkdirAll("testdata", 0755)
+	tzgo := filepath.Join("..", "cmd", "timezone.go")
+	for _, e := range []string{"msgpack", "protobuf", "json"} {
+		cfg := timezone.Config{
+			DatabaseName: filepath.Join("testdata", "timezone"),
+			Snappy:       true,
+		}
+		if e == "json" {
+			if _, err := os.Stat(cfg.DatabaseName + ".snap.json"); err != nil && os.IsNotExist(err) {
+				cmd := exec.Command("go", "run", tzgo, "-type=memory")
+				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+				cmd.Dir = "testdata"
+				_ = cmd.Run()
+			}
+			cfg.DatabaseType = "memory"
+		} else {
+			if _, err := os.Stat(cfg.DatabaseName + "." + e + ".snap.db"); err != nil && os.IsNotExist(err) {
+				cmd := exec.Command("go", "run", tzgo, "-encoding="+e)
+				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+				cmd.Dir = "testdata"
+				_ = cmd.Run()
+			}
+			var err error
+			if cfg.Encoding, err = timezone.EncodingFromString(e); err != nil {
+				b.Fatal(err)
+			}
+			cfg.DatabaseType = "boltdb"
+		}
+		b.Run(e, func(b *testing.B) {
+			tz, err := timezone.LoadTimezones(cfg)
+			if err != nil {
+				b.Fatalf("%q: %#v: %+v", e, cfg, err)
+			}
+			defer tz.Close()
 
-	tz, err := timezone.LoadTimezones(timezone.Config{
-		DatabaseType: "boltdb",   // memory or boltdb
-		DatabaseName: "timezone", // Name without suffix
-		Snappy:       true,
-		Encoding:     "msgpack", // json or msgpack
-	})
-	if err != nil {
-		fmt.Println(err)
+			benchLookup(b, tz)
+		})
 	}
+}
 
+func benchLookup(b *testing.B, tz timezone.TimezoneInterface) {
 	querys := []timezone.Coord{
 		{Lat: 5.261417, Lon: -3.925778},   // Abijan Airport
 		{Lat: -15.678889, Lon: 34.973889}, // Blantyre Airport
@@ -89,22 +119,14 @@ func main() {
 		{Lat: 42.0000, Lon: -87.5000},
 	}
 
-	var times []int64
-	var total int64
-
-	for _, query := range querys {
-		start := time.Now()
-		res, err := tz.Query(query)
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		query := querys[i%len(querys)]
+		_, err := tz.Query(query)
 		if err != nil {
 			fmt.Println(err)
 		}
-		elapsed := time.Since(start)
-		fmt.Println("Query Result: ", res, " took: ", elapsed)
-		times = append(times, elapsed.Nanoseconds())
-		total += elapsed.Nanoseconds()
 	}
-
-	fmt.Println("Average time per query: ", time.Duration(total/int64(len(times))))
-	tz.Close()
-	timezone.PrintMemUsage()
+	b.StopTimer()
 }
