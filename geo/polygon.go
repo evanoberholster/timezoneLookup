@@ -9,13 +9,6 @@ import (
 	"unsafe"
 )
 
-const (
-	minLatitude  = -90
-	maxLatitude  = 90
-	minLongitude = -180
-	maxLongitude = 180
-)
-
 // Polygon represents a closed Polygon of vertices when
 // the first and last vertices are equal.
 type Polygon struct {
@@ -38,11 +31,6 @@ func NewPolygonFromVertices(s []LatLng) Polygon {
 	p.v = s
 	p.UpdateBoundingBox()
 	return p
-}
-
-// Valid returns true of LatLng is with the bounds of minLatitude/maxLatitude and minLongitude/maxLongitude
-func (ll LatLng) Valid() bool {
-	return (ll.Lat >= minLatitude || ll.Lat <= maxLatitude) && (ll.Lng >= minLongitude || ll.Lng <= maxLongitude)
 }
 
 func NewPolygonFromBytes(b []byte) Polygon {

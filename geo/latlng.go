@@ -4,6 +4,13 @@
 
 package geo
 
+const (
+	minLatitude  = -90
+	maxLatitude  = 90
+	minLongitude = -180
+	maxLongitude = 180
+)
+
 // LatLng represents Latitude and Longitude in degree format
 type LatLng struct {
 	Lat, Lng float32
@@ -11,6 +18,11 @@ type LatLng struct {
 
 func (ll LatLng) toFloat32() [2]float32 {
 	return [2]float32{ll.Lat, ll.Lng}
+}
+
+// Valid returns true of LatLng is with the bounds of minLatitude/maxLatitude and minLongitude/maxLongitude
+func (ll LatLng) Valid() bool {
+	return (ll.Lat >= minLatitude && ll.Lat <= maxLatitude) && (ll.Lng >= minLongitude && ll.Lng <= maxLongitude)
 }
 
 // NewLatLng returns a new LatLng with the given latitude and longitude
