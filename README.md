@@ -1,49 +1,76 @@
-# Timezone lookup library
-This is a lookup API for GPS Coordinates to Timezone based on GeoJSON files. 
+# Timezone lookup
+Is a timezone lookup API for GPS Coordinates to Timezone based on GeoJSON Polygon and Multipolygon files.
 
-- Support added for MsgPack encoding for faster query.
-
-## Data
-Data should be obtained via GeoJSON, I recommend: https://github.com/evansiroky/timezone-boundary-builder
+## Source Data
+Source files can be obtained at https://github.com/evansiroky/timezone-boundary-builder
 
 ## Performance
-```
- go run benchmark.go
-```
+Performance is significantly improved between release v1 and release v2 due to the underlying data structure.
 
-### Performance BoltDB
-With Snappy Compression and data loaded from Boltdb
+[]Benchmarks still need to be written.
 
-(Msgpack) Average time per query:  ~18.015757ms 
-
-(Msgpack) Database file size: 89M
-
-(Json) Average time per query:  ~38.356527ms
-
-(Json) Database file size: 70M
-
-```
-Alloc = 4 MiB	TotalAlloc = 232 MiB	Sys = 68 MiB	NumGC = 88
-```
-
-### Performance Memory
-With Snappy Compression and data loaded from memory
-
-Average time per query:  ~87.982µs
-
-Database file size: 65M 
-
-```
-Alloc = 550 MiB	TotalAlloc = 995 MiB	Sys = 601 MiB	NumGC = 10
-```
+## Authors
+Appreciate all who have contributed with Pull Requests and Issues. We eagerly welcome suggestions and PRs.
 
 ## Example
+
+Build program
+```
+go build -o timezone cmd/main.go 
+```
+
+Download datasource and build timezone database ~50mb
+```
+./timezone -build
+```
+
+Test query for San Fransisco, United States (Etc/GMT+8)
+```
+./timezone -search -lat=37.7749 -lng=-122.4194
+```
+
+## Release V2.0 and forward 
+Based on custom backing that loads data as memory mapped data.
+
+```golang
+
+package main
+
+import (
+	"fmt"
+
+	timezone "github.com/evanoberholster/timezoneLookup@v2.0.0"
+)
+
+func main() {
+	var tzc timezone.Timezonecache
+	f, err := os.Open("timzone.data")
+	if err != nil {
+		return timezone.Result{}, err
+	}
+	defer f.Close()
+	if err = tzc.Load(f); err != nil {
+		return timezone.Result{}, err
+	}
+	defer tzc.Close()
+
+	result := tzc.Search(lat, lng)
+	fmt.Println(result)
+}
+
+```
+
+
+
+## Release V1.0 and prior
+Based on JSON, MsgPack, Protobuf or Cap'n'Proto encodings with boltDB backend
+
+### Intructions for V1.0
  1. Download data from: https://github.com/evansiroky/timezone-boundary-builder/releases
- 2. go get github.com/evanoberholster/timezoneLookup
+ 2. go get github.com/evanoberholster/timezoneLookup@v1.0.0
  3. go build github.com/evanoberholster/timezoneLookup/cmd/timezone.go
  4. timezone -json "jsonfilename" -db=timezone -type=(memory or boltdb)
  5. go run example.go
-
 
 ```golang
 package main
