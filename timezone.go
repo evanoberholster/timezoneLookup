@@ -11,10 +11,12 @@ import (
 	"runtime"
 	"time"
 
+	"github.com/evanoberholster/timezoneLookup/pb"
 	json "github.com/goccy/go-json"
-
-	"github.com/evanoberholster/timezoneLookup/cp"
 )
+
+//go:generate go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+//go:generate protoc --proto_path=pb --go_out=pb --go_opt=paths=source_relative pb/timezone.proto
 
 const (
 	WithSnappy = true
@@ -61,53 +63,30 @@ type Polygon struct {
 	Coords []Coord `json:"coords"`
 }
 
-func (dst *Polygon) FromCapnp(src *cp.Polygon) error {
-	if c, err := src.Max(); err != nil {
-		return err
+func (dst *Polygon) FromPB(src *pb.Polygon) {
+	dst.Max.FromPB(src.Max)
+	dst.Min.FromPB(src.Min)
+	if cap(dst.Coords) < len(src.Coords) {
+		dst.Coords = make([]Coord, len(src.Coords))
 	} else {
-		dst.Max.FromCapnp(&c)
-	}
-	if c, err := src.Min(); err != nil {
-		return err
-	} else {
-		dst.Min.FromCapnp(&c)
-	}
-	if coords, err := src.Coords(); err != nil {
-		return err
-	} else {
-		if cap(dst.Coords) < coords.Len() {
-			dst.Coords = make([]Coord, coords.Len())
-		} else {
-			dst.Coords = dst.Coords[:coords.Len()]
-		}
-		for i := range dst.Coords {
-			c := coords.At(i)
-			dst.Coords[i].FromCapnp(&c)
-		}
-	}
-	return nil
-}
-func (src Polygon) ToCapnp(dst *cp.Polygon) error {
-	if c, err := dst.NewMax(); err != nil {
-		return err
-	} else {
-		src.Max.ToCapnp(&c)
-	}
-	if c, err := dst.NewMin(); err != nil {
-		return err
-	} else {
-		src.Min.ToCapnp(&c)
-	}
-	coords, err := dst.NewCoords(int32(len(src.Coords)))
-	if err != nil {
-		return err
+		dst.Coords = dst.Coords[:len(src.Coords)]
 	}
 	for i, c := range src.Coords {
-		c2 := coords.At(i)
-		c.ToCapnp(&c2)
-		coords.Set(i, c2)
+		dst.Coords[i].FromPB(c)
 	}
-	return nil
+}
+func (src Polygon) ToPB(dst *pb.Polygon) {
+	dst.Reset()
+	dst.Max = src.Max.ToPB(dst.Max)
+	dst.Min = src.Min.ToPB(dst.Min)
+	if cap(dst.Coords) < len(src.Coords) {
+		dst.Coords = make([]*pb.Coord, len(src.Coords))
+	} else {
+		dst.Coords = dst.Coords[:len(src.Coords)]
+	}
+	for i, c := range src.Coords {
+		dst.Coords[i] = c.ToPB(dst.Coords[i])
+	}
 }
 
 type Coord struct {
@@ -115,12 +94,16 @@ type Coord struct {
 	Lon float32 `json:"lon"`
 }
 
-func (src Coord) ToCapnp(dst *cp.Coord) {
-	dst.SetLat(src.Lat)
-	dst.SetLon(src.Lon)
+func (src Coord) ToPB(dst *pb.Coord) *pb.Coord {
+	if dst == nil {
+		return &pb.Coord{Lat: src.Lat, Lon: src.Lon}
+	}
+	dst.Reset()
+	dst.Lat, dst.Lon = src.Lat, src.Lon
+	return dst
 }
-func (dst *Coord) FromCapnp(src *cp.Coord) {
-	dst.Lat, dst.Lon = src.Lat(), src.Lon()
+func (dst *Coord) FromPB(src *pb.Coord) {
+	dst.Lat, dst.Lon = src.Lat, src.Lon
 }
 
 type Config struct {

@@ -9,8 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"testing"
 
 	timezone "github.com/evanoberholster/timezoneLookup"
@@ -19,29 +17,27 @@ import (
 func BenchmarkLookup(b *testing.B) {
 	_ = os.MkdirAll("testdata", 0755)
 	tzgo := filepath.Join("..", "cmd", "timezone.go")
-	for _, e := range []string{"capnp.snap", "capnp", "snap.json"} {
+	for _, e := range []string{"msgpack", "protobuf", "json"} {
 		cfg := timezone.Config{
 			DatabaseName: filepath.Join("testdata", "timezone"),
+			Snappy:       true,
 		}
-		if e == "json" || e == "snap.json" {
-			cfg.Snappy = strings.HasPrefix(e, "snap.")
-			if _, err := os.Stat(cfg.DatabaseName + "." + e); err != nil && os.IsNotExist(err) {
-				cmd := exec.Command("go", "run", tzgo, "-type=memory", "-snappy="+strconv.FormatBool(cfg.Snappy))
+		if e == "json" {
+			if _, err := os.Stat(cfg.DatabaseName + ".snap.json"); err != nil && os.IsNotExist(err) {
+				cmd := exec.Command("go", "run", tzgo, "-type=memory")
 				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 				cmd.Dir = "testdata"
 				_ = cmd.Run()
 			}
 			cfg.DatabaseType = "memory"
 		} else {
-			cfg.Snappy = strings.HasSuffix(e, ".snap")
-			_, err := os.Stat(cfg.DatabaseName + "." + e + ".db")
-			e := strings.TrimSuffix(e, ".snap")
-			if err != nil && os.IsNotExist(err) {
-				cmd := exec.Command("go", "run", tzgo, "-encoding="+e, "-snappy="+strconv.FormatBool(cfg.Snappy))
+			if _, err := os.Stat(cfg.DatabaseName + "." + e + ".snap.db"); err != nil && os.IsNotExist(err) {
+				cmd := exec.Command("go", "run", tzgo, "-encoding="+e)
 				cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 				cmd.Dir = "testdata"
 				_ = cmd.Run()
 			}
+			var err error
 			if cfg.Encoding, err = timezone.EncodingFromString(e); err != nil {
 				b.Fatal(err)
 			}
