@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -18,9 +17,12 @@ import (
 
 var (
 	// TODO: benchmark     = flag.Bool("benchmark", false, "benchmark: runs a benchmark script")
-	search        = flag.Bool("search", false, "search: for the timezone for the given latitude and longitude")
+	search = flag.Bool("search", false, "search with -lat -lng")
+	lat    = flag.Float64("lat", -31.9523, "search Latitude")
+	lng    = flag.Float64("lng", -115.8613, "search Longitude")
+
 	build         = flag.Bool("build", false, "build: is used to download and build timezone data")
-	url           = flag.String("url", timezone.DefaultURL, "Url for data source as a zipfile default:"+timezone.DefaultURL)
+	url           = flag.String("url", timezone.DefaultURL, "Url for data source as a zipfile")
 	dbFilename    = flag.String("db", "timezone.data", "filename where timezone polygon data will be stored")
 	cacheFilename = flag.String("cache", "/tmp/geoJSON.zip", "cache directory for downloaded zipfile")
 )
@@ -34,30 +36,15 @@ func main() {
 			log.Fatalln(err)
 		}
 	} else if *search {
-		args := flag.Args()
-		if len(args) != 2 {
-			fmt.Println("usage: -search 'Latitude' 'Longitude'")
-			fmt.Println("example: -search 10.34343 -96.3444")
+		start := time.Now()
+		fmt.Println("Searching timezone database")
+		res, err := searchTimezone(*lat, *lng)
+		if err != nil {
+			log.Fatalln(err)
 			return
-		} else {
-
-			lat, err1 := strconv.ParseFloat(args[0], 64)
-			lng, err2 := strconv.ParseFloat(args[1], 64)
-			if err1 != nil || err2 != nil {
-				fmt.Println("unable to parse: search", args[0], args[1])
-				fmt.Println("usage: -search 'Latitude' 'Longitude'")
-				fmt.Println("example: -search 10.34343 -96.3444")
-				return
-			}
-			start := time.Now()
-			fmt.Println("Searching timezone database")
-			res, err := searchTimezone(lat, lng)
-			if err != nil {
-				log.Fatalln(err)
-			}
-			fmt.Println("Latitude:", lat, "Longitude:", lng, "Timezone:", res.Name, "Lookup time:", res.Elapsed)
-			fmt.Println("Search took:", time.Since(start))
 		}
+		fmt.Println("Latitude:", res.Coordinates.Lat, "Longitude:", res.Coordinates.Lng, "Timezone:", res.Name, "Lookup time:", res.Elapsed)
+		fmt.Println("Search took:", time.Since(start))
 
 	} else {
 		fmt.Println("Please choose one of the following options:")
@@ -81,7 +68,7 @@ func searchTimezone(lat, lng float64) (timezone.Result, error) {
 	}
 	defer tzc.Close()
 
-	return tzc.Search(lat, lng), nil
+	return tzc.Search(lat, lng)
 }
 
 func downloadAndBuild() (err error) {
