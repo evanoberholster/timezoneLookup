@@ -5,100 +5,102 @@
 package main
 
 import (
-	"archive/zip"
-	"bytes"
-	"context"
-	"errors"
 	"flag"
-	"io"
+	"fmt"
 	"log"
-	"net/http"
 	"os"
-	"os/signal"
+	"strconv"
+	"syscall"
+	"time"
 
 	timezone "github.com/evanoberholster/timezoneLookup"
 )
 
 var (
-	snappy       = flag.Bool("snappy", true, "Use Snappy compression (true/false)")
-	jsonFilename = flag.String("json", "combined-with-oceans.json", "GEOJSON Filename")
-	dbFilename   = flag.String("db", "timezone", "Destination database filename")
-	storageType  = flag.String("type", "boltdb", "Storage: boltdb or memory")
-	jsonURL      = flag.String("json-url", "https://github.com/evansiroky/timezone-boundary-builder/releases/download/2020d/timezones-with-oceans.geojson.zip", "Download GeoJSON file from here if not exist")
-	encoding     = flag.String("encoding", "msgpack", "BoltDB encoding type: json or msgpack")
+	// TODO: benchmark     = flag.Bool("benchmark", false, "benchmark: runs a benchmark script")
+	search        = flag.Bool("search", false, "search: for the timezone for the given latitude and longitude")
+	build         = flag.Bool("build", false, "build: is used to download and build timezone data")
+	url           = flag.String("url", timezone.DefaultURL, "Url for data source as a zipfile default:"+timezone.DefaultURL)
+	dbFilename    = flag.String("db", "timezone.data", "filename where timezone polygon data will be stored")
+	cacheFilename = flag.String("cache", "/tmp/geoJSON.zip", "cache directory for downloaded zipfile")
 )
 
 func main() {
-	if err := Main(); err != nil {
-		log.Fatalln(err)
-	}
-}
-func Main() error {
 	flag.Parse()
-
-	if *dbFilename == "" || *jsonFilename == "" {
-		log.Printf("Options:\n\t -snappy=true\t Use Snappy compression\n\t -json=filename\t GEOJSON filename \n\t -db=filename\t Database destination\n\t -type=boltdb\t Type of Storage (boltdb or memory) ")
-		return nil
-	}
-	var tz timezone.TimezoneInterface
-	if *storageType == "memory" {
-		tz = timezone.MemoryStorage(*snappy, *dbFilename)
-	} else if *storageType == "boltdb" {
-		e, err := timezone.EncodingFromString(*encoding)
-		if err != nil {
-			return err
+	timezone.Verbose(true)
+	if *build {
+		fmt.Println("Building timezone database")
+		if err := downloadAndBuild(); err != nil {
+			log.Fatalln(err)
 		}
-		tz = timezone.BoltdbStorage(*snappy, *dbFilename, e)
+	} else if *search {
+		args := flag.Args()
+		if len(args) != 2 {
+			fmt.Println("usage: -search 'Latitude' 'Longitude'")
+			fmt.Println("example: -search 10.34343 -96.3444")
+			return
+		} else {
+
+			lat, err1 := strconv.ParseFloat(args[0], 64)
+			lng, err2 := strconv.ParseFloat(args[1], 64)
+			if err1 != nil || err2 != nil {
+				fmt.Println("unable to parse: search", args[0], args[1])
+				fmt.Println("usage: -search 'Latitude' 'Longitude'")
+				fmt.Println("example: -search 10.34343 -96.3444")
+				return
+			}
+			start := time.Now()
+			fmt.Println("Searching timezone database")
+			res, err := searchTimezone(lat, lng)
+			if err != nil {
+				log.Fatalln(err)
+			}
+			fmt.Println("Latitude:", lat, "Longitude:", lng, "Timezone:", res.Name, "Lookup time:", res.Elapsed)
+			fmt.Println("Search took:", time.Since(start))
+		}
+
 	} else {
-		return errors.New("\"-db\" No database type specified")
+		fmt.Println("Please choose one of the following options:")
+		fmt.Println("\t", flag.Lookup("build").Usage)
+		fmt.Println("\t\t", "example: timezone -build")
+		fmt.Println("\t", flag.Lookup("search").Usage)
+		fmt.Println("\t\t", "example: timezone -search 10.34343 -96.3444")
 	}
 
-	if *jsonFilename == "" {
-		return errors.New("\"-json\" No GeoJSON source file specified")
+}
+
+func searchTimezone(lat, lng float64) (timezone.Result, error) {
+	var tzc timezone.Timezonecache
+	f, err := os.OpenFile(*dbFilename, syscall.O_RDWR, 0644)
+	if err != nil {
+		return timezone.Result{}, err
 	}
-	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer cancel()
-	if _, err := os.Stat(*jsonFilename); err != nil && os.IsNotExist(err) {
-		log.Println("Downloading " + *jsonURL)
-		req, err := http.NewRequest("GET", *jsonURL, nil)
-		if err != nil {
-			return err
-		}
-		resp, err := http.DefaultClient.Do(req.WithContext(ctx))
-		if err != nil {
-			return err
-		}
-		var buf bytes.Buffer
-		_, err = io.Copy(&buf, resp.Body)
-		resp.Body.Close()
-		if err != nil {
-			return err
-		}
-		zr, err := zip.NewReader(bytes.NewReader(buf.Bytes()), int64(buf.Len()))
-		if err != nil {
-			return err
-		}
-		sr, err := zr.Open("combined-with-oceans.json")
-		if err != nil {
-			return err
-		}
-		fh, err := os.Create(*jsonFilename)
-		if err != nil {
-			return err
-		}
-		defer func() { _ = os.Remove(fh.Name()) }()
-		defer fh.Close()
-		if _, err = io.Copy(fh, sr); err != nil {
-			return err
-		}
-		if err := fh.Close(); err != nil {
-			return err
-		}
+	defer f.Close()
+	if err = tzc.Load(f); err != nil {
+		return timezone.Result{}, err
 	}
-	err := tz.CreateTimezones(*jsonFilename)
+	defer tzc.Close()
+
+	return tzc.Search(lat, lng), nil
+
+	return timezone.Result{}, err
+}
+
+func downloadAndBuild() (err error) {
+	var tzc timezone.Timezonecache
+	var total int
+	err = timezone.ImportZipFile(*cacheFilename, *url, func(tz timezone.Timezone) error {
+		total += len(tz.Polygons)
+		tzc.AddTimezone(tz)
+		return nil
+	})
 	if err != nil {
 		return err
 	}
-	tz.Close()
+	if err = tzc.Save(*dbFilename); err != nil {
+		return err
+	}
+	fmt.Println("Polygons added:", total)
+	fmt.Println("Saved Timezone data to:", *dbFilename)
 	return nil
 }
