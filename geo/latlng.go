@@ -18,9 +18,16 @@ func NewLatLng(latitude, longitude float64) LatLng {
 	return LatLng{float32(latitude), float32(longitude)}
 }
 
-// Search LatLng
+// SearchLatLng searchs the RTree for the given LatLng combination
 func (tr *RTree) SearchLatLng(ll LatLng, iter func(min, max LatLng, value interface{}) bool) {
 	tr.searchLatLng(rect{min: ll.toFloat32(), max: ll.toFloat32()}, iter)
+}
+
+// InsertPolygon data into tree
+func (tr *RTree) InsertPolygon(p Polygon, value interface{}) {
+	var item rect
+	fit(p.min.toFloat32(), p.max.toFloat32(), value, &item)
+	tr.insert(&item)
 }
 
 func (tr *RTree) searchLatLng(
@@ -58,11 +65,4 @@ func (r *rect) searchLatLng(
 		}
 	}
 	return true
-}
-
-// InsertPolygon data into tree
-func (tr *RTree) InsertPolygon(p Polygon, value interface{}) {
-	var item rect
-	fit(p.min.toFloat32(), p.max.toFloat32(), value, &item)
-	tr.insert(&item)
 }

@@ -48,9 +48,7 @@ func (ll LatLng) Valid() bool {
 func NewPolygonFromBytes(b []byte) Polygon {
 	p := NewPolygon()
 	p.v = toLatLngSlice(b)
-	for _, v := range p.v {
-		p.updateBounds(v)
-	}
+	p.UpdateBoundingBox()
 	return p
 }
 
