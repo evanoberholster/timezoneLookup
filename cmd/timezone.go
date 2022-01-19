@@ -1,4 +1,4 @@
-// Copyright 2018 Evan Oberholster.
+// Copyright 2018-2022 Evan Oberholster.
 //
 // SPDX-License-Identifier: MIT
 
@@ -82,8 +82,6 @@ func searchTimezone(lat, lng float64) (timezone.Result, error) {
 	defer tzc.Close()
 
 	return tzc.Search(lat, lng), nil
-
-	return timezone.Result{}, err
 }
 
 func downloadAndBuild() (err error) {
