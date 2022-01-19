@@ -2,3 +2,6 @@
 *.snap.db
 *.db
 *.json
+
+/cmd/timezone.data
+/cmd/timezone

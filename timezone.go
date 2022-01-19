@@ -1,246 +1,236 @@
-// Copyright 2018 Evan Oberholster.
-//
-// SPDX-License-Identifier: MIT
-
 package timezoneLookup
 
 import (
+	"bufio"
+	"encoding/binary"
 	"errors"
-	"fmt"
 	"os"
-	"runtime"
+	"syscall"
 	"time"
 
-	"github.com/evanoberholster/timezoneLookup/pb"
-	json "github.com/goccy/go-json"
+	"github.com/evanoberholster/timezoneLookup/geo"
+	"golang.org/x/sys/unix"
 )
 
-//go:generate go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
-//go:generate protoc --proto_path=pb --go_out=pb --go_opt=paths=source_relative pb/timezone.proto
-
-const (
-	WithSnappy = true
-	NoSnappy   = false
-
-	// Errors
-	errNotExistGeoJSON    = "Error: GeoJSON file does not exist"
-	errExistDatabase      = "Error: Destination Database file already exists"
-	errNotExistDatabase   = "Error: Database file does not exist"
-	errPolygonNotFound    = "Error: Polygon for Timezone not found"
-	errTimezoneNotFound   = "Error: Timezone not found"
-	errDatabaseTypeUknown = "Error: Database type unknown"
+var (
+	endian                 = binary.LittleEndian
+	pageSize               = os.Getpagesize()
+	ErrCoordinatesNotValid = errors.New("Latitude and/or Longitude are not valid")
 )
 
-type TimezoneInterface interface {
-	CreateTimezones(jsonFilename string) error
-	LoadTimezones() error
-	Query(q Coord) (string, error)
-	Close()
+type Timezonecache struct {
+	data       []byte
+	arr        []uint32
+	name       []string
+	rt         geo.RTree
+	dataOffset uint32
+	dataLength uint32
 }
 
-type TimezoneGeoJSON struct {
-	Type     string `json:"type"`
-	Features []struct {
-		Type       string `json:"type"`
-		Properties struct {
-			Tzid string `json:"tzid"`
-		} `json:"properties"`
-		Geometry struct {
-			Item        string        `json:"type"`
-			Coordinates []interface{} `json:"coordinates"`
-		} `json:"geometry"`
-	} `json:"features"`
-}
-
-type Timezone struct {
-	Tzid     string    `json:"tzid"`
-	Polygons []Polygon `json:"polygons"`
-}
-
-type Polygon struct {
-	Max    Coord   `json:"max"`
-	Min    Coord   `json:"min"`
-	Coords []Coord `json:"coords"`
-}
-
-func (dst *Polygon) FromPB(src *pb.Polygon) {
-	dst.Max.FromPB(src.Max)
-	dst.Min.FromPB(src.Min)
-	if cap(dst.Coords) < len(src.Coords) {
-		dst.Coords = make([]Coord, len(src.Coords))
-	} else {
-		dst.Coords = dst.Coords[:len(src.Coords)]
-	}
-	for i, c := range src.Coords {
-		dst.Coords[i].FromPB(c)
-	}
-}
-func (src Polygon) ToPB(dst *pb.Polygon) {
-	dst.Reset()
-	dst.Max = src.Max.ToPB(dst.Max)
-	dst.Min = src.Min.ToPB(dst.Min)
-	if cap(dst.Coords) < len(src.Coords) {
-		dst.Coords = make([]*pb.Coord, len(src.Coords))
-	} else {
-		dst.Coords = dst.Coords[:len(src.Coords)]
-	}
-	for i, c := range src.Coords {
-		dst.Coords[i] = c.ToPB(dst.Coords[i])
-	}
-}
-
-type Coord struct {
-	Lat float32 `json:"lat"`
-	Lon float32 `json:"lon"`
-}
-
-func (src Coord) ToPB(dst *pb.Coord) *pb.Coord {
-	if dst == nil {
-		return &pb.Coord{Lat: src.Lat, Lon: src.Lon}
-	}
-	dst.Reset()
-	dst.Lat, dst.Lon = src.Lat, src.Lon
-	return dst
-}
-func (dst *Coord) FromPB(src *pb.Coord) {
-	dst.Lat, dst.Lon = src.Lat, src.Lon
-}
-
-type Config struct {
-	DatabaseName string
-	DatabaseType string
-	Snappy       bool
-	Encoding     encoding
-}
-
-var Tz TimezoneInterface
-
-func LoadTimezones(config Config) (TimezoneInterface, error) {
-	if config.DatabaseType == "memory" {
-		tz := MemoryStorage(config.Snappy, config.DatabaseName)
-		err := tz.LoadTimezones()
-		return tz, err
-
-	} else if config.DatabaseType == "boltdb" {
-		tz := BoltdbStorage(config.Snappy, config.DatabaseName, config.Encoding)
-		err := tz.LoadTimezones()
-		return tz, err
-	}
-	return &Memory{}, errors.New(errDatabaseTypeUknown)
-}
-
-func TimezonesFromGeoJSON(filename string) ([]Timezone, error) {
-	start_decode := time.Now()
-	fmt.Println("Building Timezone Database from: ", filename)
-	var timeZones []Timezone
-	file, err := os.Open(filename)
-	if err != nil {
-		return timeZones, err
-	}
-	dec := json.NewDecoder(file)
-
-	for dec.More() {
-		var js TimezoneGeoJSON
-
-		err := dec.Decode(&js)
-		if err != nil {
-			return timeZones, err
+func (tzc *Timezonecache) AddTimezone(tz Timezone) {
+	for _, p := range tz.Polygons {
+		var offset uint32
+		id := uint(len(tzc.arr)) // next id
+		buf := p.ToByteSlice()
+		tzc.data = append(tzc.data, buf...)
+		if id == 0 {
+			offset += tzc.dataOffset
+		} else {
+			offset += tzc.arr[id-1]
 		}
-		for _, tz := range js.Features {
-			t := Timezone{Tzid: tz.Properties.Tzid}
-			switch tz.Geometry.Item {
-			case "Polygon":
-				t.decodePolygons(tz.Geometry.Coordinates)
-			case "MultiPolygon":
-				t.decodeMultiPolygons(tz.Geometry.Coordinates)
-			}
-			timeZones = append(timeZones, t)
-		}
-	}
-	elapsed_decode := time.Since(start_decode)
-	fmt.Println("GeoJSON decode took: ", elapsed_decode, " with ", len(timeZones), " Timezones loaded from GeoJSON")
-	return timeZones, nil
-}
-
-func (t *Timezone) decodePolygons(polys []interface{}) { //1
-	for _, points := range polys {
-		p := t.newPolygon()
-		for _, point := range points.([]interface{}) { //3
-			p.updatePolygon(point.([]interface{}))
-		}
-		t.Polygons = append(t.Polygons, p)
+		offset += uint32(len(buf))
+		tzc.arr = append(tzc.arr, offset)
+		tzc.name = append(tzc.name, tz.Name)
+		tzc.rt.InsertPolygon(p, id)
 	}
 }
 
-func (t *Timezone) decodeMultiPolygons(polys []interface{}) { //1
-	for _, v := range polys {
-		p := t.newPolygon()
-		for _, points := range v.([]interface{}) { // 2
-			for _, point := range points.([]interface{}) { //3
-				p.updatePolygon(point.([]interface{}))
+func (tzc *Timezonecache) buf(id uint) []byte {
+	offset := uint32(0)
+	if id == 0 {
+		return tzc.data[offset : offset+tzc.arr[id]]
+	}
+	if id <= uint(len(tzc.arr)) {
+		return tzc.data[offset+tzc.arr[id-1] : offset+tzc.arr[id]]
+	}
+	return nil
+}
+
+func (tzc *Timezonecache) Search(lat, lng float64) (Result, error) {
+	var name string
+	start := time.Now()
+	ll := geo.NewLatLng(lat, lng)
+	if !ll.Valid() {
+		return Result{}, ErrCoordinatesNotValid
+	}
+
+	tzc.rt.SearchLatLng(ll, func(min geo.LatLng, max geo.LatLng, value interface{}) bool {
+		if id, ok := value.(uint); ok {
+			p := geo.NewPolygon()
+			p.FromByteSlice(tzc.buf(id))
+			if p.ContainsLatLng(ll) {
+				name = tzc.name[id]
+				return true
 			}
 		}
-		t.Polygons = append(t.Polygons, p)
-	}
-}
-
-func (t *Timezone) newPolygon() Polygon {
-	return Polygon{
-		Max: Coord{Lat: -90, Lon: -180},
-		Min: Coord{Lat: 90, Lon: 180},
-	}
-}
-
-func (p *Polygon) updatePolygon(xy []interface{}) {
-	lon := float32(xy[0].(float64))
-	lat := float32(xy[1].(float64))
-
-	// Update max and min limits
-	if p.Max.Lat < lat {
-		p.Max.Lat = lat
-	}
-	if p.Max.Lon < lon {
-		p.Max.Lon = lon
-	}
-	if p.Min.Lat > lat {
-		p.Min.Lat = lat
-	}
-	if p.Min.Lon > lon {
-		p.Min.Lon = lon
-	}
-
-	// add Coords to Polygon
-	p.Coords = append(p.Coords, Coord{Lat: lat, Lon: lon})
-}
-
-func (p *Polygon) contains(queryPt Coord) bool {
-	if len(p.Coords) < 3 {
 		return false
+	})
+	return Result{Name: name, Coordinates: ll, Elapsed: time.Since(start)}, nil
+}
+
+// Result is a timezone lookup result
+type Result struct {
+	Name        string
+	Coordinates geo.LatLng
+	Elapsed     time.Duration
+}
+
+func (tzc *Timezonecache) Save(filename string) error {
+	f2, err := os.OpenFile(filename, os.O_CREATE|os.O_RDWR, os.FileMode(0666))
+	if err != nil {
+		return err
 	}
-	in := rayIntersectsSegment(queryPt, p.Coords[len(p.Coords)-1], p.Coords[0])
-	for i := 1; i < len(p.Coords); i++ {
-		if rayIntersectsSegment(queryPt, p.Coords[i-1], p.Coords[i]) {
-			in = !in
+	defer f2.Close()
+
+	bw := bufio.NewWriter(f2)
+	buf := make([]byte, 256)
+	var n, written int
+
+	if n, err = bw.Write(tzc.encodeHeader(buf)); err != nil {
+		return err
+	}
+	written += n
+	for i := 0; i < len(tzc.name); i++ {
+		if n, err = bw.Write(tzc.encodeItem(buf, i)); err != nil {
+			return err
 		}
+		written += n
 	}
-	return in
+	if err = bw.Flush(); err != nil {
+		return err
+	}
+	offset := int64(written + pageSize - written%pageSize)
+
+	if n, err = f2.WriteAt(tzc.data, offset); err != nil {
+		return err
+	}
+	written += n
+	return bw.Flush()
 }
 
-func rayIntersectsSegment(p, a, b Coord) bool {
-	return (a.Lon > p.Lon) != (b.Lon > p.Lon) &&
-		p.Lat < (b.Lat-a.Lat)*(p.Lon-a.Lon)/(b.Lon-a.Lon)+a.Lat
+func (tzc *Timezonecache) encodeItem(buf []byte, i int) []byte {
+	name := tzc.name[i]
+	if len(buf) >= 5+len(name) {
+		endian.PutUint32(buf, tzc.arr[i])
+		buf[4] = uint8(len(name))
+		copy(buf[5:5+len(name)], name)
+	}
+	return buf[:5+len(name)]
 }
 
-func PrintMemUsage() {
-	var m runtime.MemStats
-	runtime.ReadMemStats(&m)
-	// For info on each, see: https://golang.org/pkg/runtime/#MemStats
-	fmt.Printf("Allocated Memory = %v MiB", bToMb(m.Alloc))
-	fmt.Printf("\tTotal Allocated Memory = %v MiB", bToMb(m.TotalAlloc))
-	fmt.Printf("\tSystem Memory = %v MiB", bToMb(m.Sys))
-	fmt.Printf("\tNumber of GC = %v\n", m.NumGC)
+func (tzc *Timezonecache) encodeHeader(b []byte) []byte {
+	headerLength := 10
+	if len(b) >= 10 {
+		for i := 0; i < len(tzc.name); i++ {
+			headerLength += 5 + len(tzc.name)
+		}
+		endian.PutUint32(b[:4], uint32(headerLength))
+		endian.PutUint32(b[4:8], uint32(len(tzc.data)))
+		endian.PutUint16(b[8:10], uint16(len(tzc.arr)))
+	}
+
+	return b[:10]
 }
 
-func bToMb(b uint64) uint64 {
-	return b / 1024 / 1024
+func (tzc *Timezonecache) decodeHeader(b []byte) (n int, err error) {
+	if len(b) > 10 {
+		tzc.dataOffset = endian.Uint32(b[:4])
+		tzc.dataLength = endian.Uint32(b[4:8])
+		items := endian.Uint16(b[8:10])
+		tzc.arr = make([]uint32, 0, items)
+		tzc.name = make([]string, 0, items)
+		return 10, nil
+	}
+
+	return 0, errors.New("error []byte insufficient for header")
 }
+
+func (tzc *Timezonecache) decodeItem(b []byte) (n int, err error) {
+	if len(b) > 4 && len(b) >= (5+int(b[4])) {
+		tzc.arr = append(tzc.arr, endian.Uint32(b[:4]))
+		tzc.name = append(tzc.name, string(b[5:5+b[4]]))
+		return (5 + int(b[4])), nil
+	}
+	return 0, errors.New("error []byte insufficient for an item")
+}
+
+func (tzc *Timezonecache) Load(f *os.File) (err error) {
+	var d, discarded int
+	var b []byte
+	br := bufio.NewReader(f)
+	if b, err = br.Peek(256); err != nil {
+		return err
+	}
+	if d, err = tzc.decodeHeader(b); err != nil {
+		return err
+	}
+	if d, err = br.Discard(d); err != nil {
+		return err
+	}
+	discarded += d
+	for i := 0; i < cap(tzc.name); i++ {
+		if b, err = br.Peek(256); err != nil {
+			return err
+		}
+		if d, err = tzc.decodeItem(b); err != nil {
+			return err
+		}
+		if d, err = br.Discard(d); err != nil {
+			return err
+		}
+		discarded += d
+	}
+	offset := int64(discarded + pageSize - discarded%pageSize)
+	if tzc.data, err = mmap(f, offset, int64(tzc.dataLength)); err != nil {
+		return err
+	}
+	tzc.BuildRtree()
+	return err
+}
+
+func (tzc *Timezonecache) Close() error {
+	if tzc.data != nil {
+		err := munmap(tzc.data)
+		tzc.data = nil
+		return err
+	}
+	return errors.New("error timezone data is nil")
+}
+
+func (tzc *Timezonecache) BuildRtree() {
+	for i, _ := range tzc.arr {
+		id := uint(i)
+		p := geo.NewPolygonFromBytes(tzc.buf(id))
+		tzc.rt.InsertPolygon(p, id)
+	}
+}
+
+func mmap(f *os.File, offset, length int64) ([]byte, error) {
+	if f == nil {
+		return nil, errors.New("error file not open")
+	}
+	return syscall.Mmap(int(f.Fd()), offset, int(length), syscall.PROT_READ, unix.MAP_SHARED)
+}
+
+func munmap(data []byte) (err error) {
+	if data != nil {
+		err = syscall.Munmap(data)
+		data = nil
+		return
+	}
+	return errors.New("error munmap data is nil")
+}
+
+// [8]items [8*items]offset [1*items]offsetstring
+
+// [4]dataoffset [2]items [4]offset [1]stringlength [...]string ... []
