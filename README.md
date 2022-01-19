@@ -14,7 +14,7 @@ Recent verion uses an RTree as well as a Memory mapped timezone database for red
 ### Authors
 Appreciate all who have contributed with Pull Requests and Issues. We eagerly welcome suggestions and PRs.
 
-Rtree source design by Josh Backer (tidwall)(https://github.com/tidwall/geoindex)
+Rtree source design by Josh Backer [tidwall](https://github.com/tidwall/geoindex)
 
 ### Example
 
