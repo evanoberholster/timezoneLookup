@@ -10,7 +10,7 @@ package main
 import (
 	"fmt"
 
-	timezone "github.com/evanoberholster/timezoneLookup@v2.0.0"
+	timezone "github.com/evanoberholster/timezoneLookup/v2"
 )
 
 func main() {

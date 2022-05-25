@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/evanoberholster/timezoneLookup/geo"
+	"github.com/evanoberholster/timezoneLookup/v2/geo"
 	"github.com/klauspost/compress/zip"
 )
 
