@@ -48,7 +48,7 @@ import (
 
 func main() {
 	var tzc timezone.Timezonecache
-	f, err := os.Open("timzone.data")
+	f, err := os.Open("timezone.data")
 	if err != nil {
 		return timezone.Result{}, err
 	}
