@@ -43,7 +43,7 @@ package main
 import (
 	"fmt"
 
-	timezone "github.com/evanoberholster/timezoneLookup@v2.0.0"
+	timezone "github.com/evanoberholster/timezoneLookup/v2"
 )
 
 func main() {
@@ -61,7 +61,7 @@ func main() {
 	lat := 37.7749
 	lng := -122.4194
 
-	result := tzc.Search(lat, lng)
+	result, _ := tzc.Search(lat, lng)
 	fmt.Println(result)
 }
 
