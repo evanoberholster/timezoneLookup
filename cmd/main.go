@@ -51,7 +51,7 @@ func main() {
 		fmt.Println("\t", flag.Lookup("build").Usage)
 		fmt.Println("\t\t", "example: timezone -build")
 		fmt.Println("\t", flag.Lookup("search").Usage)
-		fmt.Println("\t\t", "example: timezone -search 10.34343 -96.3444")
+		fmt.Println("\t\t", "example: timezone -search -lat 10.34343 -lng -96.3444")
 	}
 
 }
