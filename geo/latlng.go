@@ -62,7 +62,7 @@ func (r *rect) searchLatLng(
 	if height == 0 {
 		for i := 0; i < n.count; i++ {
 			if target.intersects(&n.rects[i]) {
-				if !iter(LatLng{n.rects[i].min[0], n.rects[i].min[1]}, LatLng{n.rects[i].max[0], n.rects[i].max[1]}, n.rects[i].data) {
+				if iter(LatLng{n.rects[i].min[0], n.rects[i].min[1]}, LatLng{n.rects[i].max[0], n.rects[i].max[1]}, n.rects[i].data) {
 					return false
 				}
 			}

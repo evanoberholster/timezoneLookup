@@ -28,7 +28,7 @@ Download datasource and build timezone database ~50mb
 ./timezone -build
 ```
 
-Test query for San Fransisco, United States (Etc/GMT+8)
+Test query for San Fransisco, United States (America/Los_Angeles)
 ```
 ./timezone -search -lat=37.7749 -lng=-122.4194
 ```
