@@ -5,26 +5,25 @@ import (
 	"encoding/binary"
 	"errors"
 	"os"
-	"syscall"
 	"time"
 
+	mmapgo "github.com/edsrzf/mmap-go"
 	"github.com/evanoberholster/timezoneLookup/v2/geo"
-	"golang.org/x/sys/unix"
 )
 
 var (
 	endian                 = binary.LittleEndian
-	pageSize               = os.Getpagesize()
 	ErrCoordinatesNotValid = errors.New("Latitude and/or Longitude are not valid")
 )
 
 type Timezonecache struct {
-	data       []byte
+	data       mmapgo.MMap
 	arr        []uint32
 	name       []string
 	rt         geo.RTree
 	dataOffset uint32
 	dataLength uint32
+	bufOffset  int64
 }
 
 func (tzc *Timezonecache) AddTimezone(tz Timezone) {
@@ -46,7 +45,7 @@ func (tzc *Timezonecache) AddTimezone(tz Timezone) {
 }
 
 func (tzc *Timezonecache) buf(id uint) []byte {
-	offset := uint32(0)
+	offset := uint32(tzc.bufOffset)
 	if id == 0 {
 		return tzc.data[offset : offset+tzc.arr[id]]
 	}
@@ -109,9 +108,8 @@ func (tzc *Timezonecache) Save(filename string) error {
 	if err = bw.Flush(); err != nil {
 		return err
 	}
-	offset := int64(written + pageSize - written%pageSize)
 
-	if n, err = f2.WriteAt(tzc.data, offset); err != nil {
+	if n, err = f2.WriteAt(tzc.data, int64(written)); err != nil {
 		return err
 	}
 	written += n
@@ -190,8 +188,8 @@ func (tzc *Timezonecache) Load(f *os.File) (err error) {
 		}
 		discarded += d
 	}
-	offset := int64(discarded + pageSize - discarded%pageSize)
-	if tzc.data, err = mmap(f, offset, int64(tzc.dataLength)); err != nil {
+	tzc.bufOffset = int64(discarded)
+	if tzc.data, err = mmap(f, 0, int64(tzc.dataLength+uint32(tzc.bufOffset))); err != nil {
 		return err
 	}
 	tzc.BuildRtree()
@@ -215,16 +213,17 @@ func (tzc *Timezonecache) BuildRtree() {
 	}
 }
 
-func mmap(f *os.File, offset, length int64) ([]byte, error) {
+func mmap(f *os.File, offset, length int64) (mmapgo.MMap, error) {
 	if f == nil {
 		return nil, errors.New("error file not open")
 	}
-	return syscall.Mmap(int(f.Fd()), offset, int(length), syscall.PROT_READ, unix.MAP_SHARED)
+
+	return mmapgo.MapRegion(f, int(length), mmapgo.RDONLY, 0, offset)
 }
 
-func munmap(data []byte) (err error) {
+func munmap(data mmapgo.MMap) (err error) {
 	if data != nil {
-		err = syscall.Munmap(data)
+		err = data.Unmap()
 		data = nil
 		return
 	}
