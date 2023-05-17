@@ -3,5 +3,5 @@
 *.db
 *.json
 
-/cmd/timezone.data
+**/timezone.data
 /cmd/timezone
